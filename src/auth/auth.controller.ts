@@ -20,7 +20,7 @@ export class AuthController {
 
   @Post('login')
   async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+    //return this.authService.login(loginDto);
   }
 
   @Post('register')
@@ -41,6 +41,6 @@ export class AuthController {
 
   @Post('otp/verify')
   async verifyOtp(@Body() otpVerifyDto: OtpVerifyDto) {
-    return this.authService.validateOtp(otpVerifyDto.email, otpVerifyDto.otp);
+   // return this.authService.validateOtp(otpVerifyDto.email, otpVerifyDto.otp);
   }
 }

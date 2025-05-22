@@ -10,8 +10,6 @@ import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
-import { MailerService } from '@nestjs-modules/mailer';
-import { MailService } from 'src/mailer/mailer.service';
 
 @Injectable()
 export class AuthService {
@@ -19,44 +17,9 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
-    private readonly mailService: MailService,
   ) {}
 
-  async validateUser(email: string, password: string): Promise<any> {
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-      include: {
-        role: true,
-      },
-    });
-
-    if (!user) {
-      return null;
-    }
-
-    if (!user.password) {
-      throw new UnauthorizedException('Invalid login method');
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return null;
-    }
-
-    const { password: _, ...result } = user;
-    return result;
-  }
-
-  async login(loginDto: LoginDto) {
-    const user = await this.validateUser(loginDto.email, loginDto.password);
-
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    return this.generateToken(user);
-  }
-
+ 
   async register(registerDto: RegisterDto) {
     const { email } = registerDto;
 
@@ -117,57 +80,18 @@ export class AuthService {
     otpExpiry.setMinutes(otpExpiry.getMinutes() + 15);
 
     // Update user with OTP
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        otp,
-        otpExpiry,
-      },
-    });
 
     // In a real application, you would send the OTP via email
     // For development purposes, return it directly
     if (process.env.NODE_ENV !== 'production') {
-      await this.mailService.sendOtpEmail(user.email, user.name, otp);
       return {
         message:
           'OTP generated successfully. In production, this would be sent via email.',
         otp, // Only include this in development
       };
     }
-    await this.mailService.sendOtpEmail(user.email, user.name, otp);
     return { message: 'OTP sent to your email' };
   }
 
-  async validateOtp(email: string, otp: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-      include: {
-        role: true,
-      },
-    });
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    if (!user.otp || user.otp !== otp) {
-      throw new UnauthorizedException('Invalid OTP');
-    }
-
-    if (!user.otpExpiry || new Date() > user.otpExpiry) {
-      throw new UnauthorizedException('OTP has expired');
-    }
-
-    // Clear OTP after successful validation
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        otp: null,
-        otpExpiry: null,
-      },
-    });
-
-    return this.generateToken(user);
-  }
 }

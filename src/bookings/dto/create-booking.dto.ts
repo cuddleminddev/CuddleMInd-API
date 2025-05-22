@@ -14,7 +14,6 @@ import {
   ValidateIf,
   Min,
 } from 'class-validator';
-import { PaymentMethodEnum, ServiceType } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 export class BookingScheduleDto {
@@ -68,13 +67,13 @@ export class CreateBookingDto {
   @IsNotEmpty()
   serviceId: string;
 
-  @IsEnum(ServiceType)
+//  @IsEnum(ServiceType)
   @IsNotEmpty()
-  type: ServiceType;
+  type: string;
 
-  @IsEnum(PaymentMethodEnum)
+ // @IsEnum(PaymentMethodEnum)
   @IsNotEmpty()
-  paymentMethod: PaymentMethodEnum;
+  paymentMethod: string;
 
   @IsString()
   @IsOptional()

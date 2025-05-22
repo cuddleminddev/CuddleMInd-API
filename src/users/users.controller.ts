@@ -98,28 +98,4 @@ export class UsersController {
     return this.usersService.remove(id);
   }
 
-  // Address endpoints
-  @Post('address')
-  async addAddress(@Request() req, @Body() createAddressDto: CreateAddressDto) {
-    return this.usersService.addAddress(req.user.id, createAddressDto);
-  }
-
-  @Patch('address/:id')
-  async updateAddress(
-    @Request() req,
-    @Param('id') id: string,
-    @Body() updateAddressDto: UpdateAddressDto,
-  ) {
-    return this.usersService.updateAddress(req.user.id, id, updateAddressDto);
-  }
-
-  @Delete('address/:id')
-  async removeAddress(@Request() req, @Param('id') id: string) {
-    return this.usersService.removeAddress(req.user.id, id);
-  }
-
-  @Patch('address/:id/default')
-  async setDefaultAddress(@Request() req, @Param('id') id: string) {
-    return this.usersService.setDefaultAddress(req.user.id, id);
-  }
 }
