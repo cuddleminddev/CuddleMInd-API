@@ -56,13 +56,13 @@ model User {
   id         String    @id @default(uuid()) @map("id")
   name       String
   email      String    @unique
-  phone      String
+  phone      String?
   status     UserStatus  @default(active)
   roleId     String    @map("role_id")
   role       Role      @relation(fields: [roleId], references: [id])
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
-
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  password          String?
   bookingsAsDoctor Booking[] @relation("DoctorBookings")
   bookingsAsPatient Booking[] @relation("PatientBookings")
   userPlans        UserPlan[]
@@ -75,7 +75,7 @@ model User {
 
 model Role {
   id        String   @id @default(uuid()) @map("id")
-  name      String
+  name      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

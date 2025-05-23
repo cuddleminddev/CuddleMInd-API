@@ -8,19 +8,51 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 
-
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
-   
+    const { name, email, phone, password, role } = createUserDto;
+
+    // Check if user already exists
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+    });
+    if (existingUser) {
+      throw new ConflictException('Email already in use');
+    }
+
+    // Check if role exists
+    const roleEntity = await this.prisma.role.findUnique({
+      where: { name: role },
+    });
+    if (!roleEntity) {
+      throw new NotFoundException('Role not found');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user
+    const user = await this.prisma.user.create({
+      data: {
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        roleId: roleEntity.id,
+      },
+      include: {
+        role: true,
+      },
+    });
+
+    return user;
   }
 
   async findAll() {
-    return this.prisma.user.findMany({
-    
-    });
+    return this.prisma.user.findMany({});
   }
 
   async findByRole(roleName: string) {
@@ -29,7 +61,7 @@ export class UsersService {
         role: {
           name: roleName,
         },
-      }
+      },
     });
   }
 
@@ -44,7 +76,7 @@ export class UsersService {
 
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!user) {
@@ -91,7 +123,7 @@ export class UsersService {
     // Update user
     const updatedUser = await this.prisma.user.update({
       where: { id },
-      data: updateData
+      data: updateData,
     });
 
     return updatedUser;
@@ -108,5 +140,4 @@ export class UsersService {
 
     return { message: `User with ID ${id} deleted successfully` };
   }
-
 }

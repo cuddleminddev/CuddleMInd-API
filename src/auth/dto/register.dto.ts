@@ -16,10 +16,10 @@ export class RegisterDto {
   @IsNotEmpty()
   email: string;
 
-  @IsString()
-  @IsOptional()
-  @MinLength(8)
-  password: string;
+  // @IsString()
+  // @IsOptional()
+  // @MinLength(8)
+  // password: string;
 
   @IsString()
   @IsOptional()

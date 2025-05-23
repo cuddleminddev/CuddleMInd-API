@@ -8,11 +8,13 @@ import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ResponseModule } from 'src/response/response.module';
 
 @Module({
   imports: [
     PrismaModule,
     UsersModule,
+    ResponseModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

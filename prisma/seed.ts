@@ -18,165 +18,38 @@ async function main() {
   });
 
   const customerRole = await prisma.role.upsert({
-    where: { name: 'customer' },
+    where: { name: 'client' },
     update: {},
-    create: { name: 'customer' },
+    create: { name: 'client' },
+  });
+
+  await prisma.role.upsert({
+    where: { name: 'doctor' },
+    update: {},
+    create: { name: 'doctor' },
   });
 
   // Create admin user
-  const adminPassword = await bcrypt.hash('admin123', 10);
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@maria-cleaning.com' },
+  const existingRoles = await prisma.role.findMany();
+  const adminRoleExist = existingRoles.find((r) => r.name === 'admin');
+
+  if (!adminRoleExist) {
+    throw new Error(
+      "Role 'admin' not found. Make sure roles are seeded before users.",
+    );
+  }
+  const hashedPassword = await bcrypt.hash('password@123', 10);
+  await prisma.user.upsert({
+    where: { email: 'admin@cuddlemind.com' },
     update: {},
     create: {
-      email: 'admin@maria-cleaning.com',
-      name: 'Admin User',
-      password: adminPassword,
-      roleId: adminRole.id,
+      email: 'admin@cuddlemind.com',
+      name: 'Admin',
+      password: hashedPassword,
+      role: { connect: { id: adminRoleExist.id } },
       status: 'active',
     },
   });
-
-  // Create regions
-  const region1 = await prisma.region.upsert({
-    where: { id: '1' },
-    update: {},
-    create: {
-      id: '1',
-      name: 'Downtown',
-    },
-  });
-
-  const region2 = await prisma.region.upsert({
-    where: { id: '2' },
-    update: {},
-    create: {
-      id: '2',
-      name: 'Suburbs',
-    },
-  });
-
-  // Create services
-  const regularService = await prisma.service.upsert({
-    where: { id: '1' },
-    update: {},
-    create: {
-      id: '1',
-      name: 'Regular Home Cleaning',
-      description: 'Standard cleaning service for homes',
-      durationMinutes: 120,
-      isActive: true,
-      base_price: 150,
-      bathroom_rate: 200,
-      room_rate: 300,
-      square_foot_price: 1.5,
-    },
-  });
-
-  const deepService = await prisma.service.upsert({
-    where: { id: '2' },
-    update: {},
-    create: {
-      id: '2',
-      name: 'Deep Home Cleaning',
-      description: 'Thorough cleaning service for homes',
-      durationMinutes: 240,
-      isActive: true,
-      base_price: 190,
-      bathroom_rate: 250,
-      room_rate: 350,
-      square_foot_price: 2.5,
-    },
-  });
-
-  // Create service add-ons
-  await prisma.serviceAddOn.upsert({
-    where: { id: '1' },
-    update: {},
-    create: {
-      id: '1',
-      serviceId: regularService.id,
-      name: 'Window Cleaning',
-      description: 'Clean all windows inside and out',
-      price: 40,
-    },
-  });
-
-  await prisma.serviceAddOn.upsert({
-    where: { id: '2' },
-    update: {},
-    create: {
-      id: '2',
-      serviceId: regularService.id,
-      name: 'Refrigerator Cleaning',
-      description: 'Clean inside and out of refrigerator',
-      price: 30,
-    },
-  });
-
-  await prisma.serviceAddOn.upsert({
-    where: { id: '3' },
-    update: {},
-    create: {
-      id: '3',
-      serviceId: deepService.id,
-      name: 'Oven Cleaning',
-      description: 'Deep clean oven interior and exterior',
-      price: 45,
-    },
-  });
-
-    const RecurringType = [
-      {
-        name: 'Weekly',
-        description: 'A recurring weekly plan',
-        dayFrequency: 7, // in days
-        available_discount: 10.0,
-      },
-      {
-        name: 'Bi-Weekly',
-        description: 'A recurring bi-weekly plan',
-        dayFrequency: 14,
-        available_discount: 5.0,
-      },
-    ];
-
-    for (const plan of RecurringType) {
-      await prisma.recurringType.upsert({
-        where: { name: plan.name },
-        update: {},
-        create: plan,
-      });
-    }
-
-  const subscriptionPlans = [
-    {
-      name: 'Weekly Plan',
-      description: 'A recurring weekly subscription plan',
-      recurringFrequency: 4, // in days
-      available_discount: 10.0,
-    },
-    {
-      name: 'Bi-Weekly Plan',
-      description: 'A recurring bi-weekly subscription plan',
-      recurringFrequency: 2,
-      available_discount: 5.0,
-    },
-    {
-      name: 'Monthly Plan',
-      description: 'A recurring monthly subscription plan',
-      recurringFrequency: 1,
-      available_discount: 0,
-    },
-  ];
-
-  for (const plan of subscriptionPlans) {
-    await prisma.subscriptionType.upsert({
-      where: { name: plan.name },
-      update: {},
-      create: plan,
-    });
-  }
 
   console.log('Database seeded successfully!');
 }
