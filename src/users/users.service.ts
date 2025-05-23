@@ -13,53 +13,46 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
-    const { email, password } = createUserDto;
+    const { name, email, phone, password, role } = createUserDto;
 
     // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
     });
-
     if (existingUser) {
       throw new ConflictException('Email already in use');
     }
 
-    // Hash password
-    let hashedPassword = null;
-    if (password) {
-      hashedPassword = await bcrypt.hash(password, 10);
+    // Check if role exists
+    const roleEntity = await this.prisma.role.findUnique({
+      where: { name: role },
+    });
+    if (!roleEntity) {
+      throw new NotFoundException('Role not found');
     }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
     const user = await this.prisma.user.create({
       data: {
-        ...createUserDto,
+        name,
+        email,
+        phone,
         password: hashedPassword,
+        roleId: roleEntity.id,
       },
       include: {
         role: true,
       },
     });
 
-    // Remove password from response
-    const { password: _, ...result } = user;
-    return result;
+    return user;
   }
 
   async findAll() {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        status: true,
-        roleId: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    return this.prisma.user.findMany({});
   }
 
   async findByRole(roleName: string) {
@@ -69,16 +62,14 @@ export class UsersService {
           name: roleName,
         },
       },
+    });
+  }
+
+  async findallroles() {
+    return this.prisma.role.findMany({
       select: {
         id: true,
         name: true,
-        email: true,
-        phone: true,
-        status: true,
-        roleId: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
       },
     });
   }
@@ -86,24 +77,25 @@ export class UsersService {
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        status: true,
-        roleId: true,
-        role: true,
-        addresses: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
 
     if (!user) {
       throw new NotFoundException(`User with ID ${id} not found`);
     }
 
+    return user;
+  }
+
+  async findOrCreateUser(data: {
+    email: string;
+    name: string;
+    role: string;
+    phone?: string;
+  }) {
+    let user: any = await this.findByEmail(data.email);
+    if (!user) {
+      user = await this.create(data);
+    }
     return user;
   }
 
@@ -132,17 +124,6 @@ export class UsersService {
     const updatedUser = await this.prisma.user.update({
       where: { id },
       data: updateData,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        phone: true,
-        status: true,
-        roleId: true,
-        role: true,
-        createdAt: true,
-        updatedAt: true,
-      },
     });
 
     return updatedUser;
@@ -158,106 +139,5 @@ export class UsersService {
     });
 
     return { message: `User with ID ${id} deleted successfully` };
-  }
-
-  async addAddress(userId: string, addressData: any) {
-    // Check if user exists
-    await this.findOne(userId);
-
-    // Create address
-    const address = await this.prisma.address.create({
-      data: {
-        ...addressData,
-        userId,
-      },
-    });
-
-    return address;
-  }
-
-  async updateAddress(userId: string, addressId: string, addressData: any) {
-    // Check if user exists
-    await this.findOne(userId);
-
-    // Check if address exists and belongs to user
-    const existingAddress = await this.prisma.address.findFirst({
-      where: {
-        id: addressId,
-        userId,
-      },
-    });
-
-    if (!existingAddress) {
-      throw new NotFoundException(
-        `Address with ID ${addressId} not found for this user`,
-      );
-    }
-
-    // Update address
-    const updatedAddress = await this.prisma.address.update({
-      where: { id: addressId },
-      data: addressData,
-    });
-
-    return updatedAddress;
-  }
-
-  async removeAddress(userId: string, addressId: string) {
-    // Check if user exists
-    await this.findOne(userId);
-
-    // Check if address exists and belongs to user
-    const existingAddress = await this.prisma.address.findFirst({
-      where: {
-        id: addressId,
-        userId,
-      },
-    });
-
-    if (!existingAddress) {
-      throw new NotFoundException(
-        `Address with ID ${addressId} not found for this user`,
-      );
-    }
-
-    // Delete address
-    await this.prisma.address.delete({
-      where: { id: addressId },
-    });
-
-    return { message: `Address with ID ${addressId} deleted successfully` };
-  }
-
-  async setDefaultAddress(userId: string, addressId: string) {
-    // Check if user exists
-    await this.findOne(userId);
-
-    // Check if address exists and belongs to user
-    const existingAddress = await this.prisma.address.findFirst({
-      where: {
-        id: addressId,
-        userId,
-      },
-    });
-
-    if (!existingAddress) {
-      throw new NotFoundException(
-        `Address with ID ${addressId} not found for this user`,
-      );
-    }
-
-    // First reset all addresses for this user to not default
-    await this.prisma.address.updateMany({
-      where: { userId },
-      data: { isDefault: false },
-    });
-
-    // Then set the specified address as default
-    const updatedAddress = await this.prisma.address.update({
-      where: { id: addressId },
-      data: { isDefault: true },
-    });
-
-    return updatedAddress;
   }
 }

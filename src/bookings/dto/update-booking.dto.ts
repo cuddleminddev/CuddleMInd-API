@@ -5,7 +5,6 @@ import {
   IsISO8601,
   ValidateNested,
 } from 'class-validator';
-import { BookingStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 class UpdateBookingAddressDto {
@@ -31,9 +30,8 @@ class UpdateBookingAddressDto {
 }
 
 export class UpdateBookingDto {
-  @IsEnum(BookingStatus)
   @IsOptional()
-  status?: BookingStatus;
+  status?: string;
 
   @IsISO8601()
   @IsOptional()

@@ -10,6 +10,7 @@ import {
   Request,
   Query,
 } from '@nestjs/common';
+import { Public } from '../auth/decorators/public.decorator';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -18,17 +19,25 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UpdateAddressDto } from './dto/update-address.dto';
 import { CreateAddressDto } from './dto/create-address.dto';
+import { ResponseService } from 'src/response/response.service';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly responseService: ResponseService,
+  ) {}
 
   @Post()
   @UseGuards(RolesGuard)
   @Roles('admin')
   async create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+    const user = await this.usersService.create(createUserDto);
+    return this.responseService.successResponse(
+      'User Created Sucessfully',
+      user,
+    );
   }
 
   @Get()
@@ -38,19 +47,29 @@ export class UsersController {
     if (role) {
       return this.usersService.findByRole(role);
     }
-    return this.usersService.findAll();
+    const users = await this.usersService.findAll();
+    return this.responseService.successResponse('Users Found', users);
+  }
+
+  @Get('roles')
+  @Public()
+  async getRoles(@Request() req) {
+    const roles = await this.usersService.findallroles();
+    return this.responseService.successResponse('Roles Found', roles);
   }
 
   @Get('staff')
   @UseGuards(RolesGuard)
   @Roles('admin')
   async findAllStaff() {
-    return this.usersService.findByRole('staff');
+    const staff = await this.usersService.findByRole('staff');
+    return this.responseService.successResponse('Staff Found', staff);
   }
 
   @Get('profile')
   async getProfile(@Request() req) {
-    return this.usersService.findOne(req.user.id);
+    const user = await this.usersService.findOne(req.user.id);
+    return this.responseService.successResponse('User Profile', user);
   }
 
   @Get(':id')
@@ -79,28 +98,4 @@ export class UsersController {
     return this.usersService.remove(id);
   }
 
-  // Address endpoints
-  @Post('address')
-  async addAddress(@Request() req, @Body() createAddressDto: CreateAddressDto) {
-    return this.usersService.addAddress(req.user.id, createAddressDto);
-  }
-
-  @Patch('address/:id')
-  async updateAddress(
-    @Request() req,
-    @Param('id') id: string,
-    @Body() updateAddressDto: UpdateAddressDto,
-  ) {
-    return this.usersService.updateAddress(req.user.id, id, updateAddressDto);
-  }
-
-  @Delete('address/:id')
-  async removeAddress(@Request() req, @Param('id') id: string) {
-    return this.usersService.removeAddress(req.user.id, id);
-  }
-
-  @Patch('address/:id/default')
-  async setDefaultAddress(@Request() req, @Param('id') id: string) {
-    return this.usersService.setDefaultAddress(req.user.id, id);
-  }
 }
