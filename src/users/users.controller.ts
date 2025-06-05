@@ -35,7 +35,7 @@ export class UsersController {
   async create(@Body() createUserDto: CreateUserDto) {
     const user = await this.usersService.create(createUserDto);
     return this.responseService.successResponse(
-      'User Created Sucessfully',
+      'User Created Successfully',
       user,
     );
   }
@@ -44,16 +44,15 @@ export class UsersController {
   @UseGuards(RolesGuard)
   @Roles('admin')
   async findAll(@Query('role') role?: string) {
-    if (role) {
-      return this.usersService.findByRole(role);
-    }
-    const users = await this.usersService.findAll();
+    const users = role
+      ? await this.usersService.findByRole(role)
+      : await this.usersService.findAll();
     return this.responseService.successResponse('Users Found', users);
   }
 
   @Get('roles')
   @Public()
-  async getRoles(@Request() req) {
+  async getRoles() {
     const roles = await this.usersService.findallroles();
     return this.responseService.successResponse('Roles Found', roles);
   }
@@ -76,26 +75,29 @@ export class UsersController {
   @UseGuards(RolesGuard)
   @Roles('admin')
   async findOne(@Param('id') id: string) {
-    return this.usersService.findOne(id);
+    const user = await this.usersService.findOne(id);
+    return this.responseService.successResponse('User Found', user);
   }
 
   @Patch('profile')
   async updateProfile(@Request() req, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(req.user.id, updateUserDto);
+    const user = await this.usersService.update(req.user.id, updateUserDto);
+    return this.responseService.successResponse('Profile Updated', user);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles('admin')
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+    const user = await this.usersService.update(id, updateUserDto);
+    return this.responseService.successResponse('User Updated', user);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles('admin')
   async remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+    const result = await this.usersService.remove(id);
+    return this.responseService.successResponse('User Deleted', result);
   }
-
 }

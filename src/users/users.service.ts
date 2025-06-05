@@ -15,26 +15,18 @@ export class UsersService {
   async create(createUserDto: CreateUserDto) {
     const { name, email, phone, password, role } = createUserDto;
 
-    // Check if user already exists
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
     });
-    if (existingUser) {
-      throw new ConflictException('Email already in use');
-    }
+    if (existingUser) throw new ConflictException('Email already in use');
 
-    // Check if role exists
     const roleEntity = await this.prisma.role.findUnique({
       where: { name: role },
     });
-    if (!roleEntity) {
-      throw new NotFoundException('Role not found');
-    }
+    if (!roleEntity) throw new NotFoundException('Role not found');
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
     const user = await this.prisma.user.create({
       data: {
         name,
@@ -43,46 +35,41 @@ export class UsersService {
         password: hashedPassword,
         roleId: roleEntity.id,
       },
-      include: {
-        role: true,
-      },
+      include: { role: true },
     });
 
+    delete user.password;
     return user;
   }
 
   async findAll() {
-    return this.prisma.user.findMany({});
+    const users = await this.prisma.user.findMany({ include: { role: true } });
+    return users.map(({ password, ...user }) => user);
   }
 
   async findByRole(roleName: string) {
-    return this.prisma.user.findMany({
-      where: {
-        role: {
-          name: roleName,
-        },
-      },
+    const users = await this.prisma.user.findMany({
+      where: { role: { name: roleName } },
+      include: { role: true },
     });
+    return users.map(({ password, ...user }) => user);
   }
 
   async findallroles() {
     return this.prisma.role.findMany({
-      select: {
-        id: true,
-        name: true,
-      },
+      select: { id: true, name: true },
     });
   }
 
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
+      include: { role: true },
     });
 
-    if (!user) {
-      throw new NotFoundException(`User with ID ${id} not found`);
-    }
+    if (!user) throw new NotFoundException(`User with ID ${id} not found`);
 
+    delete user.password;
     return user;
   }
 
@@ -92,52 +79,42 @@ export class UsersService {
     role: string;
     phone?: string;
   }) {
-    let user: any = await this.findByEmail(data.email);
-    if (!user) {
-      user = await this.create(data);
-    }
+    let user = await this.findByEmail(data.email);
+    if (!user) user = await this.create(data);
     return user;
   }
 
   async findByEmail(email: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { email },
-      include: {
-        role: true,
-      },
+      include: { role: true },
     });
+    if (user) delete user.password;
+    return user;
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    // Check if user exists
-    await this.findOne(id);
+    await this.findOne(id); // Ensures user exists
 
-    // Prepare update data
     const updateData: any = { ...updateUserDto };
 
-    // If updating password, hash it
     if (updateUserDto.password) {
       updateData.password = await bcrypt.hash(updateUserDto.password, 10);
     }
 
-    // Update user
     const updatedUser = await this.prisma.user.update({
       where: { id },
       data: updateData,
+      include: { role: true },
     });
 
+    delete updatedUser.password;
     return updatedUser;
   }
 
   async remove(id: string) {
-    // Check if user exists
-    await this.findOne(id);
-
-    // Delete user
-    await this.prisma.user.delete({
-      where: { id },
-    });
-
+    await this.findOne(id); // Ensures user exists
+    await this.prisma.user.delete({ where: { id } });
     return { message: `User with ID ${id} deleted successfully` };
   }
 }

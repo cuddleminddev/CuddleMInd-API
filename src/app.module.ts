@@ -8,6 +8,8 @@ import { BookingsModule } from './bookings/bookings.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ResponseModule } from './response/response.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ChatModule } from './chat/chat.module';
+import { PlansModule } from './plans/plans.module';
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { ScheduleModule } from '@nestjs/schedule';
     PaymentsModule,
     ResponseModule,
     ScheduleModule.forRoot(),
+    ChatModule,
+    PlansModule,
   ],
 })
 export class AppModule {}
