@@ -58,6 +58,7 @@ model User {
   phone                  String?                @map("phone")
   status                 UserStatus             @default(active) @map("status")
   roleId                 String                 @map("role_id")
+  profile_picture        String?
   createdAt              DateTime               @default(now()) @map("created_at")
   updatedAt              DateTime               @updatedAt @map("updated_at")
   password               String?                @map("password")
@@ -68,10 +69,21 @@ model User {
   bookingsAsPatient      Booking[]              @relation("PatientBookings")
   transactions           Transaction[]
   doctorUnavailabilities DoctorUnavailability[]
+  doctorProfile          DoctorProfile?
   chatSessionsAsPatient  ChatSession[]          @relation("ChatPatient")
   chatSessionsAsSupport  ChatSession[]          @relation("ChatSupport")
 
   @@map("users")
+}
+
+model DoctorProfile {
+  id                 String   @id @default(uuid())
+  doctorId           String   @unique
+  audioConsultationCharge Decimal @map("audio_consultation_charge")
+  videoConsultationCharge Decimal @map("video_consultation_charge")
+
+  doctor User @relation(fields: [doctorId], references: [id])
+@@map("doctor_profiles")
 }
 
 model Role {

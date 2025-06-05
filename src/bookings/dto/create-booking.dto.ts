@@ -1,23 +1,44 @@
-import { IsUUID, IsEnum, IsDateString, IsInt, Min } from 'class-validator';
-import { SessionType, PaymentType } from '@prisma/client';
+import {
+  IsUUID,
+  IsString,
+  IsEnum,
+  IsOptional,
+  IsDateString,
+  IsNumber,
+} from 'class-validator';
+import { BookingStatus, PaymentType } from '@prisma/client';
 
 export class CreateBookingDto {
   @IsUUID()
-  doctorId: string;
+  customerId: string;
 
   @IsUUID()
-  patientId: string;
+  serviceId: string;
 
   @IsDateString()
-  scheduledAt: Date;
+  startTime: string;
 
-  @IsInt()
-  @Min(15)
-  durationMinutes: number;
+  @IsDateString()
+  @IsOptional()
+  endTime?: string;
 
-  @IsEnum(SessionType)
-  type: SessionType;
+  @IsEnum(BookingStatus)
+  @IsOptional()
+  status?: BookingStatus;
 
   @IsEnum(PaymentType)
-  paymentType: PaymentType;
+  @IsOptional()
+  paymentType?: PaymentType;
+
+  @IsString()
+  @IsOptional()
+  paymentIntentId?: string;
+
+  @IsNumber()
+  @IsOptional()
+  amount?: number;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }

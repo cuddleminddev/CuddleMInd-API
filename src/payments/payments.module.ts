@@ -1,11 +1,19 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
-import { PaymentsController } from './payments.controller';
-import { PrismaModule } from '../prisma/prisma.module';
+import { StripeModule } from 'nestjs-stripe';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
-  imports: [PrismaModule],
-  controllers: [PaymentsController],
+  imports: [
+    StripeModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        apiKey: configService.get<string>('STRIPE_SECRET_KEY'),
+        apiVersion: '2025-02-24.acacia',
+      }),
+      inject: [ConfigService],
+    }),
+  ],
   providers: [PaymentsService],
   exports: [PaymentsService],
 })
