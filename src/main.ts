@@ -15,7 +15,7 @@ async function bootstrap() {
     '/api/webhooks/stripe',
     json({
       verify: (req: any, res, buf) => {
-        req.rawBody = buf; // 👈 Capture raw body here
+        req.rawBody = buf;
       },
     }),
   );
@@ -35,17 +35,19 @@ async function bootstrap() {
 
   app.enableCors();
 
-  await app.listen(process.env.PORT || 3000);
-  console.log(`Application is running on: ${await app.getUrl()}`);
-
+  // 🔹 Swagger Configuration
   const config = new DocumentBuilder()
     .setTitle('CuddleMind API')
     .setDescription('Mental Health Consultation API')
     .setVersion('1.0')
-    .addBearerAuth()
+    .addBearerAuth() // Enables JWT auth in Swagger
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('api/docs', app, document); // Swagger UI will be at /api/docs
+
+  // Start the server
+  await app.listen(process.env.PORT || 3000);
+  console.log(`🚀 Application is running on: ${await app.getUrl()}`);
 }
 bootstrap();

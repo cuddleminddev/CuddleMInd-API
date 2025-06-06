@@ -8,6 +8,14 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
 
+export interface FindAllOptions {
+  page: number;
+  limit: number;
+  name?: string;
+  email?: string;
+  role?: string;
+}
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -42,9 +50,50 @@ export class UsersService {
     return user;
   }
 
-  async findAll() {
-    const users = await this.prisma.user.findMany({ include: { role: true } });
-    return users.map(({ password, ...user }) => user);
+  async findAll(options: FindAllOptions) {
+    const { page, limit, name, email, role } = options;
+
+    const where: any = {};
+    if (name) where.name = { contains: name, mode: 'insensitive' };
+    if (email) where.email = { contains: email, mode: 'insensitive' };
+    if (role) {
+      where.role = {
+        name: {
+          contains: role,
+        },
+      };
+    }
+
+    const [users, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          createdAt: true,
+          updatedAt: true,
+          role: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      users,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async findByRole(roleName: string) {
