@@ -77,13 +77,14 @@ model User {
 }
 
 model DoctorProfile {
-  id                 String   @id @default(uuid())
-  doctorId           String   @unique
+  id                      String  @id @default(uuid())
+  doctorId                String  @unique
   audioConsultationCharge Decimal @map("audio_consultation_charge")
   videoConsultationCharge Decimal @map("video_consultation_charge")
 
   doctor User @relation(fields: [doctorId], references: [id])
-@@map("doctor_profiles")
+
+  @@map("doctor_profiles")
 }
 
 model Role {
@@ -115,7 +116,7 @@ model PlanPackage {
   bookingFrequency Int      @map("booking_frequency")
   timePeriod       Int      @map("time_period")
   amount           Decimal  @map("amount")
-  isActive          Boolean   @default(true)  @map("is_active")
+  isActive         Boolean  @default(true) @map("is_active")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
@@ -152,7 +153,7 @@ model Transaction {
   paymentType PaymentType       @map("payment_type")
   status      TransactionStatus @map("status")
   createdAt   DateTime          @default(now()) @map("created_at")
-
+remainingUses Int @default(0)
   user    User         @relation(fields: [userId], references: [id])
   booking Booking?     @relation(fields: [bookingId], references: [id])
   plan    PlanPackage? @relation("PlanTransactions", fields: [planId], references: [id])
@@ -161,23 +162,25 @@ model Transaction {
 }
 
 model Booking {
-  id              String        @id @default(uuid()) @map("id")
-  doctorId        String        @map("doctor_id")
-  patientId       String        @map("patient_id")
-  userPlanId      String        @map("user_plan_id")
-  scheduledAt     DateTime      @map("scheduled_at")
-  durationMinutes Int           @map("duration_minutes")
-  isPaid          Boolean       @map("is_paid")
-  paymentType     PaymentType   @map("payment_type")
-  type            SessionType   @map("type")
-  status          BookingStatus @map("status")
-  createdAt       DateTime      @default(now()) @map("created_at")
+  id          String        @id @default(uuid())
+  doctorId    String
+  patientId   String
+  scheduledAt DateTime
+  type        SessionType
+  status      BookingStatus @default(pending)
+  isPaid      Boolean       @default(false)
+  paymentType PaymentType
+  userPlanId  String?
+  amount      Decimal       @default(0.0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  doctor              User                 @relation("DoctorBookings", fields: [doctorId], references: [id])
-  patient             User                 @relation("PatientBookings", fields: [patientId], references: [id])
-  userPlan            UserPlan             @relation(fields: [userPlanId], references: [id])
-  consultationSession ConsultationSession?
-  transaction         Transaction?
+  doctor      User         @relation("DoctorBookings", fields: [doctorId], references: [id])
+  patient     User         @relation("PatientBookings", fields: [patientId], references: [id])
+  userPlan    UserPlan?    @relation(fields: [userPlanId], references: [id])
+  transaction Transaction?
+
+  consultationSession ConsultationSession? @relation("BookingToSession")
 
   @@map("bookings")
 }
@@ -193,7 +196,7 @@ model ConsultationSession {
   notes       String?           @map("notes")
   createdAt   DateTime          @default(now()) @map("created_at")
 
-  booking Booking @relation(fields: [bookingId], references: [id])
+  booking Booking @relation("BookingToSession", fields: [bookingId], references: [id])
 
   @@map("consultation_sessions")
 }
@@ -213,15 +216,15 @@ model DoctorUnavailability {
 }
 
 model ChatSession {
-  id           String   @id @default(uuid())
-  patientId    String
-  supportId    String?   
-  startedAt    DateTime @default(now())
-  endedAt      DateTime?
-  status       SessionStatusEnum @default(pending)
+  id        String            @id @default(uuid())
+  patientId String
+  supportId String?
+  startedAt DateTime          @default(now())
+  endedAt   DateTime?
+  status    SessionStatusEnum @default(pending)
 
-  patient      User     @relation("ChatPatient", fields: [patientId], references: [id])
-  support      User?    @relation("ChatSupport", fields: [supportId], references: [id])
+  patient User  @relation("ChatPatient", fields: [patientId], references: [id])
+  support User? @relation("ChatSupport", fields: [supportId], references: [id])
 
   @@map("chat_sessions")
 }

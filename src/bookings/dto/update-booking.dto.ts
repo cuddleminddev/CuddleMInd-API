@@ -1,44 +1,55 @@
+import { PartialType } from '@nestjs/mapped-types';
+import { CreateBookingDto } from './create-booking.dto';
+import { BookingStatus, PaymentType, SessionType } from '@prisma/client';
 import {
-  IsString,
-  IsOptional,
+  IsBoolean,
   IsEnum,
-  IsISO8601,
-  ValidateNested,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsDateString,
+  IsInt,
+  Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
-class UpdateBookingAddressDto {
-  @IsString()
+export class UpdateBookingDto extends PartialType(CreateBookingDto) {
   @IsOptional()
-  street?: string;
+  @IsBoolean()
+  @ApiPropertyOptional({ description: 'Whether the booking is paid' })
+  isPaid?: boolean;
 
-  @IsString()
   @IsOptional()
-  city?: string;
+  @IsEnum(BookingStatus)
+  @ApiPropertyOptional({
+    enum: BookingStatus,
+    description: 'Status of the booking',
+  })
+  status?: BookingStatus;
 
-  @IsString()
   @IsOptional()
-  state?: string;
+  @IsUUID()
+  @ApiPropertyOptional({ description: 'User Plan ID' })
+  userPlanId?: string;
 
-  @IsString()
   @IsOptional()
-  zip?: string;
+  @IsDateString()
+  @ApiPropertyOptional({ description: 'Rescheduled date and time' })
+  scheduledAt?: Date;
 
-  @IsString()
   @IsOptional()
-  specialInstructions?: string;
-}
+  @IsInt()
+  @Min(1)
+  @ApiPropertyOptional({ description: 'Duration in minutes' })
+  durationMinutes?: number;
 
-export class UpdateBookingDto {
   @IsOptional()
-  status?: string;
+  @IsEnum(PaymentType)
+  @ApiPropertyOptional({ enum: PaymentType, description: 'Payment type' })
+  paymentType?: PaymentType;
 
-  @IsISO8601()
   @IsOptional()
-  scheduledDate?: string;
-
-  @ValidateNested()
-  @Type(() => UpdateBookingAddressDto)
-  @IsOptional()
-  address?: UpdateBookingAddressDto;
+  @IsEnum(SessionType)
+  @ApiPropertyOptional({ enum: SessionType, description: 'Session type' })
+  type?: SessionType;
 }
