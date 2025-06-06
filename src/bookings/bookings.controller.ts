@@ -1,3 +1,5 @@
+// src/bookings/bookings.controller.ts
+
 import {
   Controller,
   Get,
@@ -6,37 +8,100 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ResponseService } from 'src/response/response.service';
+import { GetTimeSlotsDto } from './dto/get-time-slots.dto';
 
+@ApiTags('Bookings')
 @Controller('bookings')
 export class BookingsController {
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(
+    private readonly bookingsService: BookingsService,
+    private readonly responseService: ResponseService,
+  ) {}
 
   @Post()
-  create(@Body() createBookingDto: CreateBookingDto) {
-    return this.bookingsService.create(createBookingDto);
+  @ApiOperation({ summary: 'Create a new booking (One-time or Plan)' })
+  @ApiResponse({
+    status: 201,
+    description: 'Booking created or payment intent returned.',
+  })
+  async create(@Body() createBookingDto: CreateBookingDto) {
+    const result = await this.bookingsService.create(createBookingDto);
+    return this.responseService.successResponse(
+      'Booking processed successfully.',
+      result,
+    );
   }
 
   @Get()
-  findAll() {
-    return this.bookingsService.findAll();
+  @ApiOperation({ summary: 'Retrieve all bookings' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of bookings retrieved successfully.',
+  })
+  async listBookings(
+    @Query('patientId') patientId?: string,
+    @Query('doctorId') doctorId?: string,
+  ) {
+    const bookings = await this.bookingsService.findAll({
+      patientId,
+      doctorId,
+    });
+    return this.responseService.successResponse(
+      'Bookings retrieved successfully',
+      bookings,
+    );
+  }
+
+  @Get('/timeslots')
+  @ApiOperation({ summary: 'List available time slots for a doctor on a date' })
+  async getAvailableTimeSlots(@Query() dto: GetTimeSlotsDto) {
+    const timeslots = await this.bookingsService.getAvailableTimeSlots(dto);
+    return this.responseService.successResponse(
+      'Available timeslots listed',
+      timeslots,
+    );
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.bookingsService.findOne(id);
+  @ApiOperation({ summary: 'Retrieve a booking by ID' })
+  @ApiResponse({ status: 200, description: 'Booking retrieved successfully.' })
+  async getBookingById(@Param('id') id: string) {
+    const booking = await this.bookingsService.findOne(id);
+    return this.responseService.successResponse(
+      'Booking retrieved successfully',
+      booking,
+    );
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateBookingDto: UpdateBookingDto) {
-    return this.bookingsService.update(id, updateBookingDto);
+  @ApiOperation({ summary: 'Update a booking by ID' })
+  @ApiResponse({ status: 200, description: 'Booking updated successfully.' })
+  async update(
+    @Param('id') id: string,
+    @Body() updateBookingDto: UpdateBookingDto,
+  ) {
+    const updated = await this.bookingsService.update(id, updateBookingDto);
+    return this.responseService.successResponse(
+      'Booking updated successfully',
+      updated,
+    );
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.bookingsService.remove(id);
+  @ApiOperation({ summary: 'Delete a booking by ID' })
+  @ApiResponse({ status: 200, description: 'Booking deleted successfully.' })
+  async remove(@Param('id') id: string) {
+    const removed = await this.bookingsService.remove(id);
+    return this.responseService.successResponse(
+      'Booking deleted successfully',
+      removed,
+    );
   }
 }

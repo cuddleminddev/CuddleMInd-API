@@ -1,44 +1,39 @@
 import {
   IsUUID,
-  IsString,
-  IsEnum,
-  IsOptional,
   IsDateString,
+  IsBoolean,
+  IsEnum,
   IsNumber,
 } from 'class-validator';
-import { BookingStatus, PaymentType } from '@prisma/client';
+import { ApiProperty } from '@nestjs/swagger';
+import { PaymentType, SessionType } from '@prisma/client';
 
 export class CreateBookingDto {
+  @ApiProperty()
   @IsUUID()
-  customerId: string;
+  doctorId: string;
 
+  @ApiProperty()
   @IsUUID()
-  serviceId: string;
+  patientId: string;
 
+  @ApiProperty()
+  @IsUUID()
+  userPlanId: string;
+
+  @ApiProperty()
   @IsDateString()
-  startTime: string;
+  scheduledAt: Date;
 
-  @IsDateString()
-  @IsOptional()
-  endTime?: string;
-
-  @IsEnum(BookingStatus)
-  @IsOptional()
-  status?: BookingStatus;
-
-  @IsEnum(PaymentType)
-  @IsOptional()
-  paymentType?: PaymentType;
-
-  @IsString()
-  @IsOptional()
-  paymentIntentId?: string;
-
+  @ApiProperty()
   @IsNumber()
-  @IsOptional()
-  amount?: number;
+  durationMinutes: number;
 
-  @IsString()
-  @IsOptional()
-  notes?: string;
+  @ApiProperty({ enum: PaymentType })
+  @IsEnum(PaymentType)
+  paymentType: PaymentType;
+
+  @ApiProperty({ enum: SessionType })
+  @IsEnum(SessionType)
+  type: SessionType;
 }

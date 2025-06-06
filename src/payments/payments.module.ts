@@ -8,7 +8,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     StripeModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        apiKey: configService.get<string>('STRIPE_SECRET_KEY'),
+        apiKey: process.env.STRIPE_SECRET_KEY,
         apiVersion: '2025-02-24.acacia',
       }),
       inject: [ConfigService],

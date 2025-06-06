@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { Stripe } from 'stripe';
 import { InjectStripe } from 'nestjs-stripe';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { PaymentType, TransactionStatus } from '@prisma/client';
 
 @Injectable()
 export class PaymentsService {
-  constructor(@InjectStripe() private readonly stripeClient: Stripe) {}
+  constructor(
+    @InjectStripe() private readonly stripeClient: Stripe,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async createPaymentIntent(data: {
     amount: number;
@@ -15,6 +20,26 @@ export class PaymentsService {
       amount: data.amount * 100, // amount in cents
       currency: data.currency,
       metadata: data.metadata,
+    });
+  }
+
+  async createOneTimePayment({
+    userId,
+    bookingId,
+    amount,
+  }: {
+    userId: string;
+    bookingId: string;
+    amount: number;
+  }) {
+    return this.prisma.transaction.create({
+      data: {
+        userId,
+        bookingId,
+        amount,
+        status: TransactionStatus.success,
+        paymentType: PaymentType.one_time,
+      },
     });
   }
 }
