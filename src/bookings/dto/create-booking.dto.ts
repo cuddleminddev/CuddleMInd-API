@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsEnum,
   IsNumber,
+  IsOptional,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { PaymentType, SessionType } from '@prisma/client';
@@ -11,6 +12,7 @@ import { PaymentType, SessionType } from '@prisma/client';
 export class CreateBookingDto {
   @ApiProperty()
   @IsUUID()
+  @IsOptional()
   doctorId: string;
 
   @ApiProperty()

@@ -9,16 +9,26 @@ import {
   Param,
   Delete,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { ResponseService } from 'src/response/response.service';
 import { GetTimeSlotsDto } from './dto/get-time-slots.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { Public } from 'src/auth/decorators/public.decorator';
 
 @ApiTags('Bookings')
+@ApiBearerAuth()
 @Controller('bookings')
+@UseGuards(JwtAuthGuard)
 export class BookingsController {
   constructor(
     private readonly bookingsService: BookingsService,
@@ -60,6 +70,7 @@ export class BookingsController {
   }
 
   @Get('/timeslots')
+  @Public()
   @ApiOperation({ summary: 'List available time slots for a doctor on a date' })
   async getAvailableTimeSlots(@Query() dto: GetTimeSlotsDto) {
     const timeslots = await this.bookingsService.getAvailableTimeSlots(dto);

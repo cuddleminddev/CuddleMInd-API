@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -58,10 +55,11 @@ model User {
   phone                  String?                @map("phone")
   status                 UserStatus             @default(active) @map("status")
   roleId                 String                 @map("role_id")
-  profile_picture        String?
+  profilePicture         String?                @map("profile_picture")
   createdAt              DateTime               @default(now()) @map("created_at")
   updatedAt              DateTime               @updatedAt @map("updated_at")
   password               String?                @map("password")
+
   role                   Role                   @relation(fields: [roleId], references: [id])
   userOtps               UserOtp[]
   userPlans              UserPlan[]             @relation("PatientPlans")
@@ -77,8 +75,8 @@ model User {
 }
 
 model DoctorProfile {
-  id                      String  @id @default(uuid())
-  doctorId                String  @unique
+  id                      String  @id @default(uuid()) @map("id")
+  doctorId                String  @unique @map("doctor_id")
   audioConsultationCharge Decimal @map("audio_consultation_charge")
   videoConsultationCharge Decimal @map("video_consultation_charge")
 
@@ -145,15 +143,16 @@ model UserPlan {
 }
 
 model Transaction {
-  id          String            @id @default(uuid()) @map("id")
-  userId      String            @map("user_id")
-  planId      String?           @unique @map("plan_id")
-  bookingId   String?           @unique @map("booking_id")
-  amount      Decimal           @map("amount")
-  paymentType PaymentType       @map("payment_type")
-  status      TransactionStatus @map("status")
-  createdAt   DateTime          @default(now()) @map("created_at")
-remainingUses Int @default(0)
+  id            String            @id @default(uuid()) @map("id")
+  userId        String            @map("user_id")
+  planId        String?           @unique @map("plan_id")
+  bookingId     String?           @unique @map("booking_id")
+  amount        Decimal           @map("amount")
+  paymentType   PaymentType       @map("payment_type")
+  status        TransactionStatus @map("status")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  remainingUses Int               @default(0) @map("remaining_uses")
+
   user    User         @relation(fields: [userId], references: [id])
   booking Booking?     @relation(fields: [bookingId], references: [id])
   plan    PlanPackage? @relation("PlanTransactions", fields: [planId], references: [id])
@@ -162,18 +161,18 @@ remainingUses Int @default(0)
 }
 
 model Booking {
-  id          String        @id @default(uuid())
-  doctorId    String
-  patientId   String
-  scheduledAt DateTime
-  type        SessionType
-  status      BookingStatus @default(pending)
-  isPaid      Boolean       @default(false)
-  paymentType PaymentType
-  userPlanId  String?
-  amount      Decimal       @default(0.0)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id          String        @id @default(uuid()) @map("id")
+  doctorId    String        @map("doctor_id")
+  patientId   String        @map("patient_id")
+  scheduledAt DateTime      @map("scheduled_at")
+  type        SessionType   @map("type")
+  status      BookingStatus @default(pending) @map("status")
+  isPaid      Boolean       @default(false) @map("is_paid")
+  paymentType PaymentType   @map("payment_type")
+  userPlanId  String?       @map("user_plan_id")
+  amount      Decimal       @default(0.0) @map("amount")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
 
   doctor      User         @relation("DoctorBookings", fields: [doctorId], references: [id])
   patient     User         @relation("PatientBookings", fields: [patientId], references: [id])
@@ -216,12 +215,12 @@ model DoctorUnavailability {
 }
 
 model ChatSession {
-  id        String            @id @default(uuid())
-  patientId String
-  supportId String?
-  startedAt DateTime          @default(now())
-  endedAt   DateTime?
-  status    SessionStatusEnum @default(pending)
+  id        String            @id @default(uuid()) @map("id")
+  patientId String            @map("patient_id")
+  supportId String?           @map("support_id")
+  startedAt DateTime          @default(now()) @map("started_at")
+  endedAt   DateTime?         @map("ended_at")
+  status    SessionStatusEnum @default(pending) @map("status")
 
   patient User  @relation("ChatPatient", fields: [patientId], references: [id])
   support User? @relation("ChatSupport", fields: [supportId], references: [id])

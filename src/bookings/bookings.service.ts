@@ -11,6 +11,11 @@ import { BookingStatus, PaymentType, SessionType } from '@prisma/client';
 import dayjs from 'dayjs';
 import { GetTimeSlotsDto } from './dto/get-time-slots.dto';
 import isBetween from 'dayjs/plugin/isBetween';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 @Injectable()
 export class BookingsService {
@@ -191,26 +196,26 @@ export class BookingsService {
   async getAvailableTimeSlots(
     dto: GetTimeSlotsDto,
   ): Promise<{ time: string; isAvailable: boolean }[]> {
-    const date = dayjs(dto.date || new Date()).startOf('day');
+    const TIMEZONE = 'Asia/Kolkata';
+    const date = dayjs.tz(dto.date || new Date(), TIMEZONE).startOf('day');
     const startHour = 9;
     const endHour = 18;
     const slotMinutes = 30;
 
-    // Generate all slots
-    const allSlots: string[] = [];
+    const allSlots: dayjs.Dayjs[] = [];
     for (let hour = startHour; hour < endHour; hour++) {
       for (let min = 0; min < 60; min += slotMinutes) {
-        allSlots.push(
-          `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`,
-        );
+        allSlots.push(date.hour(hour).minute(min).second(0));
       }
     }
 
     if (!dto.doctorId) {
-      return allSlots.map((time) => ({ time, isAvailable: true }));
+      return allSlots.map((slot) => ({
+        time: slot.format('YYYY-MM-DDTHH:mm:ssZ'), // e.g., 2025-08-12T09:00:00+05:30
+        isAvailable: true,
+      }));
     }
 
-    // Find booked slots by existing bookings with confirmed or pending status
     const bookings = await this.prisma.booking.findMany({
       where: {
         doctorId: dto.doctorId,
@@ -223,7 +228,6 @@ export class BookingsService {
       select: { scheduledAt: true },
     });
 
-    // Find doctor unavailability ranges for that date
     const unavailabilities = await this.prisma.doctorUnavailability.findMany({
       where: {
         doctorId: dto.doctorId,
@@ -232,28 +236,24 @@ export class BookingsService {
     });
 
     const bookedTimes = bookings.map((b) =>
-      dayjs(b.scheduledAt).format('HH:mm'),
+      dayjs(b.scheduledAt).tz(TIMEZONE).format('HH:mm'),
     );
 
-    return allSlots.map((time) => {
-      const slotDateTime = date
-        .hour(Number(time.split(':')[0]))
-        .minute(Number(time.split(':')[1]))
-        .second(0);
+    return allSlots.map((slot) => {
+      const timeString = slot.format('HH:mm');
 
-      // Check if time slot is within any unavailability range
       const isBlocked = unavailabilities.some((u) =>
-        slotDateTime.isBetween(
-          dayjs(u.startTime),
-          dayjs(u.endTime),
+        slot.isBetween(
+          dayjs(u.startTime).tz(TIMEZONE),
+          dayjs(u.endTime).tz(TIMEZONE),
           null,
           '[)',
         ),
       );
 
       return {
-        time,
-        isAvailable: !bookedTimes.includes(time) && !isBlocked,
+        time: slot.format('YYYY-MM-DDTHH:mm:ssZ'), // Human-readable + correct zone
+        isAvailable: !bookedTimes.includes(timeString) && !isBlocked,
       };
     });
   }
