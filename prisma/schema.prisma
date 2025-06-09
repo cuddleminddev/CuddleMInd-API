@@ -49,16 +49,16 @@ enum UserStatus {
 
 // Tables
 model User {
-  id                     String                 @id @default(uuid()) @map("id")
-  name                   String                 @map("name")
-  email                  String                 @unique @map("email")
-  phone                  String?                @map("phone")
-  status                 UserStatus             @default(active) @map("status")
-  roleId                 String                 @map("role_id")
-  profilePicture         String?                @map("profile_picture")
-  createdAt              DateTime               @default(now()) @map("created_at")
-  updatedAt              DateTime               @updatedAt @map("updated_at")
-  password               String?                @map("password")
+  id             String     @id @default(uuid()) @map("id")
+  name           String     @map("name")
+  email          String     @unique @map("email")
+  phone          String?    @map("phone")
+  status         UserStatus @default(active) @map("status")
+  roleId         String     @map("role_id")
+  profilePicture String?    @map("profile_picture")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  password       String?    @map("password")
 
   role                   Role                   @relation(fields: [roleId], references: [id])
   userOtps               UserOtp[]
@@ -70,6 +70,8 @@ model User {
   doctorProfile          DoctorProfile?
   chatSessionsAsPatient  ChatSession[]          @relation("ChatPatient")
   chatSessionsAsSupport  ChatSession[]          @relation("ChatSupport")
+  patientReviews         Review[]               @relation("PatientReviews")
+  doctorReviews          Review[]               @relation("DoctorReviews")
 
   @@map("users")
 }
@@ -178,6 +180,7 @@ model Booking {
   patient     User         @relation("PatientBookings", fields: [patientId], references: [id])
   userPlan    UserPlan?    @relation(fields: [userPlanId], references: [id])
   transaction Transaction?
+  review      Review?
 
   consultationSession ConsultationSession? @relation("BookingToSession")
 
@@ -226,4 +229,18 @@ model ChatSession {
   support User? @relation("ChatSupport", fields: [supportId], references: [id])
 
   @@map("chat_sessions")
+}
+
+model Review {
+  id        String   @id @default(uuid()) @map("id")
+  patientId String   @map("patient_id")
+  doctorId  String   @map("doctor_id")
+  bookingId String?  @unique @map("booking_id") // ✅ MUST be unique for 1:1
+  rating    Int      @map("rating")
+  comment   String?  @map("comment")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  patient User     @relation("PatientReviews", fields: [patientId], references: [id])
+  doctor  User     @relation("DoctorReviews", fields: [doctorId], references: [id])
+  booking Booking? @relation(fields: [bookingId], references: [id])
 }

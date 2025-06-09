@@ -17,6 +17,28 @@ import timezone from 'dayjs/plugin/timezone';
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+const SESSION_DURATION_MS = 60 * 60 * 1000;
+
+function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
+  return aStart < bEnd && aEnd > bStart;
+}
+
+function isSlotAvailable(
+  slotStart: Date,
+  unavail: { startTime: Date; endTime: Date }[],
+  bookings: { scheduledAt: Date }[],
+) {
+  const slotEnd = new Date(slotStart.getTime() + SESSION_DURATION_MS);
+  for (const ua of unavail) {
+    if (overlaps(slotStart, slotEnd, ua.startTime, ua.endTime)) return false;
+  }
+  for (const b of bookings) {
+    const bEnd = new Date(b.scheduledAt.getTime() + SESSION_DURATION_MS);
+    if (overlaps(slotStart, slotEnd, b.scheduledAt, bEnd)) return false;
+  }
+  return true;
+}
+
 @Injectable()
 export class BookingsService {
   constructor(
@@ -192,72 +214,6 @@ export class BookingsService {
     return this.prisma.booking.delete({ where: { id } });
   }
 
-  // Get available time slots for doctor on a given date
-  async getAvailableTimeSlots(
-    dto: GetTimeSlotsDto,
-  ): Promise<{ time: string; isAvailable: boolean }[]> {
-    const TIMEZONE = 'Asia/Kolkata';
-    const date = dayjs.tz(dto.date || new Date(), TIMEZONE).startOf('day');
-    const startHour = 9;
-    const endHour = 18;
-    const slotMinutes = 30;
-
-    const allSlots: dayjs.Dayjs[] = [];
-    for (let hour = startHour; hour < endHour; hour++) {
-      for (let min = 0; min < 60; min += slotMinutes) {
-        allSlots.push(date.hour(hour).minute(min).second(0));
-      }
-    }
-
-    if (!dto.doctorId) {
-      return allSlots.map((slot) => ({
-        time: slot.format('YYYY-MM-DDTHH:mm:ssZ'), // e.g., 2025-08-12T09:00:00+05:30
-        isAvailable: true,
-      }));
-    }
-
-    const bookings = await this.prisma.booking.findMany({
-      where: {
-        doctorId: dto.doctorId,
-        scheduledAt: {
-          gte: date.toDate(),
-          lt: date.endOf('day').toDate(),
-        },
-        status: { in: [BookingStatus.confirmed, BookingStatus.pending] },
-      },
-      select: { scheduledAt: true },
-    });
-
-    const unavailabilities = await this.prisma.doctorUnavailability.findMany({
-      where: {
-        doctorId: dto.doctorId,
-        date: date.toDate(),
-      },
-    });
-
-    const bookedTimes = bookings.map((b) =>
-      dayjs(b.scheduledAt).tz(TIMEZONE).format('HH:mm'),
-    );
-
-    return allSlots.map((slot) => {
-      const timeString = slot.format('HH:mm');
-
-      const isBlocked = unavailabilities.some((u) =>
-        slot.isBetween(
-          dayjs(u.startTime).tz(TIMEZONE),
-          dayjs(u.endTime).tz(TIMEZONE),
-          null,
-          '[)',
-        ),
-      );
-
-      return {
-        time: slot.format('YYYY-MM-DDTHH:mm:ssZ'), // Human-readable + correct zone
-        isAvailable: !bookedTimes.includes(timeString) && !isBlocked,
-      };
-    });
-  }
-
   // Get consultation charge for a doctor and session type
   async getConsultationCharge(
     doctorId: string,
@@ -319,6 +275,42 @@ export class BookingsService {
     }
 
     return availableDoctor.id;
+  }
+
+  // Get available time slots for doctor on a given date
+
+  async getAvailableSlots(dto: GetTimeSlotsDto) {
+    const { doctorId, date } = dto;
+    const dayStart = new Date(date);
+    dayStart.setHours(8, 0, 0, 0);
+    const dayEnd = new Date(date);
+    dayEnd.setHours(18, 0, 0, 0);
+
+    const [unavail, bookings] = await Promise.all([
+      this.prisma.doctorUnavailability.findMany({
+        where: { doctorId, date: new Date(date) },
+        select: { startTime: true, endTime: true },
+      }),
+      this.prisma.booking.findMany({
+        where: {
+          doctorId,
+          scheduledAt: { gte: dayStart, lt: dayEnd },
+          status: { notIn: ['cancelled', 'missed'] },
+        },
+        select: { scheduledAt: true },
+      }),
+    ]);
+
+    const slots: string[] = [];
+    const slotTime = new Date(dayStart);
+    while (slotTime <= dayEnd) {
+      if (isSlotAvailable(slotTime, unavail, bookings)) {
+        slots.push(slotTime.toISOString());
+      }
+      slotTime.setTime(slotTime.getTime() + SESSION_DURATION_MS);
+    }
+
+    return slots;
   }
 
   // Mark doctor unavailable by adding DoctorUnavailability record for that time slot

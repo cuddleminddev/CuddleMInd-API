@@ -73,7 +73,7 @@ export class BookingsController {
   @Public()
   @ApiOperation({ summary: 'List available time slots for a doctor on a date' })
   async getAvailableTimeSlots(@Query() dto: GetTimeSlotsDto) {
-    const timeslots = await this.bookingsService.getAvailableTimeSlots(dto);
+    const timeslots = await this.bookingsService.getAvailableSlots(dto);
     return this.responseService.successResponse(
       'Available timeslots listed',
       timeslots,

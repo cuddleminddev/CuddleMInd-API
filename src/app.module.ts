@@ -10,6 +10,7 @@ import { ResponseModule } from './response/response.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ChatModule } from './chat/chat.module';
 import { PlansModule } from './plans/plans.module';
+import { ReviewModule } from './review/review.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { PlansModule } from './plans/plans.module';
     ScheduleModule.forRoot(),
     ChatModule,
     PlansModule,
+    ReviewModule,
   ],
 })
 export class AppModule {}
