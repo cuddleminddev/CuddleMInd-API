@@ -6,6 +6,7 @@ import {
   OnGatewayInit,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
@@ -115,11 +116,44 @@ export class ChatGateway
     }
   }
 
+  @SubscribeMessage('send_message')
+  handleSendMessage(
+    @MessageBody()
+    payload: {
+      sessionId: string;
+      senderId: string;
+      senderName?: string;
+      message: string;
+      timestamp?: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const messagePayload = {
+      sessionId: payload.sessionId,
+      senderId: payload.senderId,
+      senderName: payload.senderName || 'User',
+      message: payload.message,
+      timestamp: payload.timestamp || new Date().toISOString(),
+    };
+
+    // Broadcast to everyone in the session (including sender)
+    this.server.to(payload.sessionId).emit('receive_message', messagePayload);
+  }
+
   @SubscribeMessage('end_chat')
   async handleEndChat(@MessageBody() payload: { sessionId: string }) {
     await this.chatService.endChatSession(payload.sessionId);
-
+ 
     // Optionally, notify both sides if you stored session ID to sockets
     console.log(`Chat ended: ${payload.sessionId}`);
+  }
+
+  @SubscribeMessage('joinSession')
+  handleJoinSession(
+    @MessageBody() sessionId: string,
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.join(sessionId);
+    console.log(`Client ${client.id} joined session ${sessionId}`);
   }
 }

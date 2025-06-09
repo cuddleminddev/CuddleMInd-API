@@ -19,14 +19,6 @@ export class CreateUserDto {
   email: string;
 
   @ApiPropertyOptional({
-    example: 'securePassword123',
-    description: 'User password (required for roles except client)',
-  })
-  @ValidateIf((o) => o.role !== 'client')
-  @IsString()
-  password?: string;
-
-  @ApiPropertyOptional({
     example: '+911234567890',
     description: 'Phone number (optional)',
   })
@@ -48,6 +40,14 @@ export class CreateUserDto {
   })
   @IsString()
   role: string;
+
+  @ApiPropertyOptional({
+    example: 'securePassword123',
+    description: 'User password (required for roles except client)',
+  })
+  @ValidateIf((o) => o.role !== 'client')
+  @IsString()
+  password?: string;
 
   @ApiPropertyOptional({
     enum: UserStatus,

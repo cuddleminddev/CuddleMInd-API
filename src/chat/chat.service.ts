@@ -2,9 +2,10 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { SessionStatusEnum } from '@prisma/client';
+import { ChatSession, SessionStatusEnum } from '@prisma/client';
 
 @Injectable()
 export class ChatService {
@@ -17,6 +18,29 @@ export class ChatService {
         status: SessionStatusEnum.pending,
       },
     });
+  }
+
+  async startSession(patientId: string): Promise<ChatSession> {
+    const existing = await this.prisma.chatSession.findFirst({
+      where: {
+        patientId,
+        status: { in: ['pending', 'ongoing'] },
+      },
+    });
+    if (existing) throw new ConflictException('Chat already in progress');
+
+    const support = await this.findAvailableSupport(); // define this logic
+    return this.prisma.chatSession.create({
+      data: {
+        patientId,
+        //supportId: support?.id,
+        status: 'ongoing',
+      },
+    });
+  }
+
+  findAvailableSupport() {
+    throw new Error('Method not implemented.');
   }
 
   async assignConsultantToSession(sessionId: string, supportId: string) {
@@ -40,6 +64,15 @@ export class ChatService {
         supportId,
         status: SessionStatusEnum.ongoing,
         startedAt: new Date(),
+      },
+    });
+  }
+
+  async getActiveSession(patientId: string): Promise<ChatSession | null> {
+    return this.prisma.chatSession.findFirst({
+      where: {
+        patientId,
+        status: { in: ['pending', 'ongoing'] },
       },
     });
   }

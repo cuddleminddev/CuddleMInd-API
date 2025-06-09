@@ -148,6 +148,12 @@ export class AuthService {
     if (!isValid) {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        status: 'active',
+      },
+    });
 
     // Optional: delete OTP after successful use
     await this.prisma.userOtp.delete({ where: { id: latestOtp.id } });
