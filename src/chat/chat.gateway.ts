@@ -10,6 +10,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -70,10 +71,11 @@ export class ChatGateway
   async handleChatRequest(@MessageBody() payload: { patientId: string }) {
     const { patientId } = payload;
 
-    // Create a pending chat session in the database
+    const patient = await this.chatService.getUserById(patientId); // Implement this if not already
+    if (!patient) return;
+
     const chatSession = await this.chatService.createChatSession(patientId);
 
-    // Notify all consultants if available
     if (this.consultants.size === 0) {
       const patientSocket = this.patients.get(patientId);
       patientSocket?.emit('no_consultants_available');
@@ -82,6 +84,7 @@ export class ChatGateway
         consultantSocket.emit('new_chat_request', {
           sessionId: chatSession.id,
           patientId,
+          patientName: patient.name, // Pass patient name
         });
       }
     }
@@ -143,8 +146,13 @@ export class ChatGateway
   @SubscribeMessage('end_chat')
   async handleEndChat(@MessageBody() payload: { sessionId: string }) {
     await this.chatService.endChatSession(payload.sessionId);
- 
-    // Optionally, notify both sides if you stored session ID to sockets
+
+    // Notify all users in the session
+    this.server.to(payload.sessionId).emit('chat_ended', {
+      sessionId: payload.sessionId,
+      message: 'Chat session has ended.',
+    });
+
     console.log(`Chat ended: ${payload.sessionId}`);
   }
 

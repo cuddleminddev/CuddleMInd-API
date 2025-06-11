@@ -87,4 +87,13 @@ export class ChatService {
       },
     });
   }
+
+  //Helper Functions
+
+  async getUserById(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    });
+  }
 }

@@ -73,6 +73,25 @@ export class PlansService {
     });
   }
 
+  async createInactiveUserPlan(userId: string, packageId: string) {
+    const start = new Date();
+    const end = new Date();
+    end.setMonth(end.getMonth() + 1);
+
+    const userPlan = await this.prisma.userPlan.create({
+      data: {
+        patientId: userId,
+        packageId,
+        startDate: start,
+        endDate: end,
+        isActive: false,
+        bookingsPending: 4, // Or dynamic based on plan
+      },
+    });
+
+    return userPlan.id;
+  }
+
   async assignPlanToUser(userId: string, packageId: string): Promise<UserPlan> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const plan = await this.prisma.planPackage.findUnique({

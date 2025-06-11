@@ -129,19 +129,17 @@ export class StripeService {
       },
     });
 
-    if (type === 'plan' && metadata.packageId) {
-      const start = new Date();
-      const end = new Date();
-      end.setMonth(end.getMonth() + 1);
-
-      await this.prisma.userPlan.create({
+    if (type === 'plan' && metadata.userPlanId) {
+      await this.prisma.userPlan.update({
+        where: { id: metadata.userPlanId },
         data: {
-          patientId: userId,
-          packageId: metadata.packageId,
-          bookingsPending: 4,
-          startDate: start,
-          endDate: end,
           isActive: true,
+          startDate: new Date(),
+          endDate: (() => {
+            const end = new Date();
+            end.setMonth(end.getMonth() + 1);
+            return end;
+          })(),
         },
       });
     }

@@ -10,6 +10,8 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
   Req,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PlansService } from './plans.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -50,20 +52,45 @@ export class PlansController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Post('purchase')
-  async purchasePlan(@Body('packageId') packageId: string, @Req() req: any) {
+  @Post(':packageId/purchase')
+  async purchasePlan(@Param('packageId') packageId: string, @Req() req: any) {
     const userId = req.user.id;
+
+    const userPlanExist = await this
 
     const plan = await this.prisma.planPackage.findUnique({
       where: { id: packageId },
     });
 
     if (!plan) {
-      throw new Error('Plan not found');
+      throw new NotFoundException('Plan not found');
     }
+
+    if (plan.isActive == false) {
+      throw new BadRequestException('Plan is not active');
+    }
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + plan.timePeriod);
+
+    // Pre-create userPlan with isActive: false
+    const userPlan = await this.prisma.userPlan.create({
+      data: {
+        patientId: userId,
+        packageId,
+        bookingsPending: plan.bookingFrequency,
+        startDate,
+        endDate,
+        isActive: false,
+      },
+    });
 
     const metadata = {
       packageId,
+      userId,
+      userPlanId: userPlan.id,
+      type: 'plan',
     };
 
     const secret = await this.stripeService.createPaymentIntent(
@@ -72,8 +99,9 @@ export class PlansController {
       'plan',
       metadata,
     );
+
     return this.responseService.successResponse(
-      'Sucess proceed to payment',
+      'Success. Proceed to payment',
       secret,
     );
   }
