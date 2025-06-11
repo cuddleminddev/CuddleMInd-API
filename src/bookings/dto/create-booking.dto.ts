@@ -20,8 +20,9 @@ export class CreateBookingDto {
   patientId: string;
 
   @ApiProperty()
+  @IsOptional()
   @IsUUID()
-  userPlanId: string;
+  userPlanId?: string;
 
   @ApiProperty()
   @IsDateString()

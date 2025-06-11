@@ -7,21 +7,8 @@ import { PaymentType, TransactionStatus } from '@prisma/client';
 @Injectable()
 export class PaymentsService {
   constructor(
-    @InjectStripe() private readonly stripeClient: Stripe,
     private readonly prisma: PrismaService,
   ) {}
-
-  async createPaymentIntent(data: {
-    amount: number;
-    currency: string;
-    metadata: Record<string, any>;
-  }) {
-    return this.stripeClient.paymentIntents.create({
-      amount: data.amount * 100, // amount in cents
-      currency: data.currency,
-      metadata: data.metadata,
-    });
-  }
 
   async createOneTimePayment({
     userId,

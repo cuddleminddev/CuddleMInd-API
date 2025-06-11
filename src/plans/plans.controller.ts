@@ -9,6 +9,7 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  Req,
 } from '@nestjs/common';
 import { PlansService } from './plans.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -24,6 +25,8 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { ResponseService } from 'src/response/response.service';
+import { StripeService } from 'src/stripe/stripe.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @ApiTags('Plans')
 @Controller('plans')
@@ -31,6 +34,8 @@ export class PlansController {
   constructor(
     private readonly planService: PlansService,
     private readonly responseService: ResponseService,
+    private readonly stripeService: StripeService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get()
@@ -41,6 +46,35 @@ export class PlansController {
     return this.responseService.successResponse(
       'Plans fetched successfully',
       plans,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('purchase')
+  async purchasePlan(@Body('packageId') packageId: string, @Req() req: any) {
+    const userId = req.user.id;
+
+    const plan = await this.prisma.planPackage.findUnique({
+      where: { id: packageId },
+    });
+
+    if (!plan) {
+      throw new Error('Plan not found');
+    }
+
+    const metadata = {
+      packageId,
+    };
+
+    const secret = await this.stripeService.createPaymentIntent(
+      userId,
+      Number(plan.amount),
+      'plan',
+      metadata,
+    );
+    return this.responseService.successResponse(
+      'Sucess proceed to payment',
+      secret,
     );
   }
 
