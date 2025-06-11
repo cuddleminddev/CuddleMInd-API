@@ -9,5 +9,6 @@ import { StripeModule } from 'src/stripe/stripe.module';
   imports: [ResponseModule, StripeModule],
   controllers: [PlansController],
   providers: [PlansService, PrismaService],
+  exports: [PlansService],
 })
 export class PlansModule {}

@@ -19,7 +19,6 @@ export class StripeController {
     @Req() request: Request,
   ) {
     const rawBody = (request as any).rawBody;
-
     if (!signature || !rawBody) {
       throw new BadRequestException('Missing signature or raw body');
     }

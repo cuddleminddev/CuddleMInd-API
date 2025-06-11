@@ -2,6 +2,9 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
+  forwardRef,
+  Inject,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -43,20 +46,40 @@ function isSlotAvailable(
 export class BookingsService {
   constructor(
     private prisma: PrismaService,
+    @Inject(forwardRef(() => StripeService))
     private stripeService: StripeService,
   ) {}
 
   // Create booking with plan or one-time payment
-  async create(dto: CreateBookingDto) {
-    const { type, scheduledAt, doctorId, paymentType, userPlanId, patientId } =
-      dto;
+  async create(dto: CreateBookingDto, clientId: string) {
+    const { type, scheduledAt, doctorId, paymentType } = dto;
 
-    // Validate scheduledAt is a valid date
+    const patientId = clientId;
+
     if (!scheduledAt || !dayjs(scheduledAt).isValid()) {
       throw new BadRequestException('Invalid scheduledAt date');
     }
 
-    // 1. Determine consultation charge for doctor or default
+    // Check client role
+    const client = await this.prisma.user.findUnique({
+      where: { id: clientId },
+      include: { role: true },
+    });
+
+    if (!client || client.role.name.toLowerCase() !== 'client') {
+      throw new ForbiddenException('Only clients can create bookings');
+    }
+
+    // Get active user plans
+    const activePlans = await this.prisma.userPlan.findMany({
+      where: {
+        patientId: clientId,
+        isActive: true,
+      },
+      include: { package: true },
+    });
+
+    // Assign doctor
     const assignedDoctorId =
       doctorId || (await this.assignAvailableDoctor(new Date(scheduledAt)));
 
@@ -65,57 +88,58 @@ export class BookingsService {
       type,
     );
 
+    // One-time payment
     if (paymentType === PaymentType.one_time) {
-      // Create payment intent for one-time
+      const booking = await this.prisma.booking.create({
+        data: {
+          doctorId: assignedDoctorId,
+          patientId,
+          scheduledAt: new Date(scheduledAt),
+          type,
+          paymentType,
+          isPaid: false, // <-- Payment not confirmed yet
+          userPlanId: null,
+          amount: consultationCharge,
+          status: BookingStatus.pending, // <-- Mark as pending until payment is completed
+        },
+      });
+
       const paymentIntent = await this.stripeService.createPaymentIntent(
-        patientId, 
-        Number(consultationCharge), 
+        patientId,
+        Number(consultationCharge),
         PaymentType.one_time,
         {
           patientId,
           doctorId: assignedDoctorId,
-          // optionally include bookingId if you want to track post-payment
+          bookingId: booking.id, // Optional: attach booking ID for later confirmation
         },
       );
 
       return {
+        booking,
         paymentIntent,
-        message: 'Payment intent created. Confirm it on frontend.',
+        message: 'Booking created. Confirm payment on frontend.',
       };
     }
 
+    // Plan payment
     if (paymentType === PaymentType.plan) {
-      if (!userPlanId) {
-        throw new BadRequestException(
-          'userPlanId is required for plan payment',
-        );
+      if (activePlans.length === 0) {
+        throw new BadRequestException('No active plans found for user');
       }
 
-      // Fetch user plan including package for frequency
-      const plan = await this.prisma.userPlan.findUnique({
-        where: { id: userPlanId },
-        include: { package: true },
-      });
+      const selectedPlan = activePlans.find((p) => p.bookingsPending > 0);
 
-      if (!plan || !plan.isActive) {
-        throw new BadRequestException('Invalid or inactive plan');
-      }
-
-      // Enforce usage limit - count bookings pending or confirmed in plan
-      const remainingUses = plan.bookingsPending; // based on schema, userPlan has bookingsPending
-
-      if (remainingUses <= 0) {
+      if (!selectedPlan) {
         throw new BadRequestException('Plan usage limit reached');
       }
 
-      // Enforce booking frequency (bookingFrequency from PlanPackage)
-      const frequencyInDays = plan.package.bookingFrequency;
+      const frequencyInDays = selectedPlan.package.timePeriod;
 
-      // Find last confirmed booking under this plan for patient
       const lastBooking = await this.prisma.booking.findFirst({
         where: {
           patientId,
-          userPlanId,
+          userPlanId: selectedPlan.id,
           status: BookingStatus.confirmed,
         },
         orderBy: { scheduledAt: 'desc' },
@@ -126,6 +150,7 @@ export class BookingsService {
           frequencyInDays,
           'day',
         );
+
         if (dayjs(scheduledAt).isBefore(nextAllowedDate)) {
           throw new BadRequestException(
             `You can only book after ${nextAllowedDate.format('YYYY-MM-DD')}`,
@@ -133,28 +158,25 @@ export class BookingsService {
         }
       }
 
-      // Create booking
       const booking = await this.prisma.booking.create({
         data: {
           doctorId: assignedDoctorId,
           patientId,
           scheduledAt: new Date(scheduledAt),
-          type: type,
+          type,
           paymentType,
           isPaid: true,
-          userPlanId,
+          userPlanId: selectedPlan.id,
           amount: consultationCharge,
           status: BookingStatus.confirmed,
         },
       });
 
-      // Decrement bookingsPending in UserPlan
       await this.prisma.userPlan.update({
-        where: { id: userPlanId },
+        where: { id: selectedPlan.id },
         data: { bookingsPending: { decrement: 1 } },
       });
 
-      // Block doctor's availability
       await this.markDoctorUnavailable(assignedDoctorId, new Date(scheduledAt));
 
       return booking;
@@ -164,8 +186,31 @@ export class BookingsService {
   }
 
   // Fetch all bookings with relations
-  async findAll(filter?: { patientId?: string; doctorId?: string }) {
+  async findAll(filter?: {
+    patientId?: string;
+    doctorId?: string;
+    fromDate?: string;
+    toDate?: string;
+  }) {
+    const { patientId, doctorId, fromDate, toDate } = filter || {};
+
+    const where: any = {};
+
+    if (patientId) where.patientId = patientId;
+    if (doctorId) where.doctorId = doctorId;
+
+    if (fromDate || toDate) {
+      where.scheduledAt = {};
+      if (fromDate) {
+        where.scheduledAt.gte = new Date(fromDate);
+      }
+      if (toDate) {
+        where.scheduledAt.lte = new Date(toDate);
+      }
+    }
+
     return this.prisma.booking.findMany({
+      where,
       include: {
         doctor: true,
         patient: true,
@@ -230,8 +275,8 @@ export class BookingsService {
 
     if (!profile) {
       // default charges if profile missing
-      if (type === SessionType.audio) return 300;
-      if (type === SessionType.video) return 500;
+      if (type === SessionType.audio) return 100;
+      if (type === SessionType.video) return 200;
       return 0;
     }
 
@@ -286,36 +331,52 @@ export class BookingsService {
 
   async getAvailableSlots(dto: GetTimeSlotsDto) {
     const { doctorId, date } = dto;
-    const dayStart = new Date(date);
-    dayStart.setHours(8, 0, 0, 0);
-    const dayEnd = new Date(date);
-    dayEnd.setHours(18, 0, 0, 0);
 
-    const [unavail, bookings] = await Promise.all([
+    const dayStart = new Date(date);
+    dayStart.setHours(8, 0, 0, 0); // 8:00 AM
+
+    const dayEnd = new Date(date);
+    dayEnd.setHours(18, 0, 0, 0); // 6:00 PM
+
+    const [unavailabilities, bookings] = await Promise.all([
       this.prisma.doctorUnavailability.findMany({
-        where: { doctorId, date: new Date(date) },
+        where: {
+          doctorId,
+          date: new Date(date),
+        },
         select: { startTime: true, endTime: true },
       }),
       this.prisma.booking.findMany({
         where: {
           doctorId,
-          scheduledAt: { gte: dayStart, lt: dayEnd },
-          status: { notIn: ['cancelled', 'missed'] },
+          scheduledAt: {
+            gte: dayStart,
+            lt: dayEnd,
+          },
+          status: {
+            notIn: ['cancelled', 'missed'],
+          },
         },
         select: { scheduledAt: true },
       }),
     ]);
 
-    const slots: string[] = [];
+    const results: { time: string; available: boolean }[] = [];
     const slotTime = new Date(dayStart);
-    while (slotTime <= dayEnd) {
-      if (isSlotAvailable(slotTime, unavail, bookings)) {
-        slots.push(slotTime.toISOString());
-      }
+
+    while (slotTime < dayEnd) {
+      const slotCopy = new Date(slotTime); // Avoid mutation
+      const available = isSlotAvailable(slotCopy, unavailabilities, bookings);
+
+      results.push({
+        time: slotCopy.toISOString(),
+        available,
+      });
+
       slotTime.setTime(slotTime.getTime() + SESSION_DURATION_MS);
     }
 
-    return slots;
+    return results;
   }
 
   // Mark doctor unavailable by adding DoctorUnavailability record for that time slot

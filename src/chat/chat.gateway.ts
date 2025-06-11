@@ -84,7 +84,7 @@ export class ChatGateway
         consultantSocket.emit('new_chat_request', {
           sessionId: chatSession.id,
           patientId,
-          patientName: patient.name, // Pass patient name
+          patientName: patient.name,
         });
       }
     }

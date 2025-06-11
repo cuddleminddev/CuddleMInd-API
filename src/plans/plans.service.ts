@@ -92,6 +92,16 @@ export class PlansService {
     return userPlan.id;
   }
 
+  async findActivePlansByUserId(userId: string) {
+    return this.prisma.userPlan.findMany({
+      where: {
+        patientId: userId,
+        isActive: true,
+      },
+      include: { package: true },
+    });
+  }
+
   async assignPlanToUser(userId: string, packageId: string): Promise<UserPlan> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const plan = await this.prisma.planPackage.findUnique({

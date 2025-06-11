@@ -1,17 +1,29 @@
-import { Injectable, BadRequestException, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import Stripe from 'stripe';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { PaymentType, TransactionStatus } from '@prisma/client';
+import { BookingStatus, PaymentType, TransactionStatus } from '@prisma/client';
+import { BookingsService } from 'src/bookings/bookings.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class StripeService {
   private stripe: Stripe;
 
   constructor(
-    @Inject('STRIPE_SECRET') secret: string,
+    private configService: ConfigService,
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => BookingsService))
+    private bookingsService: BookingsService,
   ) {
-    this.stripe = new Stripe(secret, { apiVersion: '2025-02-24.acacia' });
+    const secret = this.configService.get<string>('STRIPE_SECRET_KEY');
+    this.stripe = new Stripe(secret, {
+      apiVersion: '2025-02-24.acacia',
+    });
   }
 
   async createPaymentIntent(
@@ -28,6 +40,10 @@ export class StripeService {
         type,
         ...metadata,
       },
+      automatic_payment_methods: {
+        enabled: true,
+        allow_redirects: 'never',
+      },
     });
 
     return {
@@ -38,7 +54,6 @@ export class StripeService {
   async handleWebhook(signature: string, payload: Buffer) {
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
     let event: Stripe.Event;
-
     try {
       event = this.stripe.webhooks.constructEvent(
         payload,
@@ -115,11 +130,14 @@ export class StripeService {
   }
 
   private async handleSuccessfulPaymentIntent(intent: Stripe.PaymentIntent) {
+    console.log('Payment intent success');
+
     const metadata = intent.metadata;
     const userId = metadata.userId;
     const type = metadata.type as PaymentType;
     const amount = Number(intent.amount) / 100;
 
+    // Record the transaction
     await this.prisma.transaction.create({
       data: {
         userId,
@@ -129,7 +147,8 @@ export class StripeService {
       },
     });
 
-    if (type === 'plan' && metadata.userPlanId) {
+    // Handle plan payment (activate plan)
+    if (type === PaymentType.plan && metadata.userPlanId) {
       await this.prisma.userPlan.update({
         where: { id: metadata.userPlanId },
         data: {
@@ -144,7 +163,33 @@ export class StripeService {
       });
     }
 
-    // TODO: Booking or one-time payments
+    // Handle one-time booking payment
+    if (type === PaymentType.one_time && metadata.bookingId) {
+      const bookingId = metadata.bookingId;
+
+      const booking = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+      });
+
+      if (!booking) {
+        throw new Error(`Booking not found for ID: ${bookingId}`);
+      }
+
+      // Update the booking status to confirmed and mark as paid
+      await this.prisma.booking.update({
+        where: { id: bookingId },
+        data: {
+          isPaid: true,
+          status: BookingStatus.confirmed,
+        },
+      });
+
+      // Mark doctor unavailable for the booked time
+      await this.bookingsService.markDoctorUnavailable(
+        booking.doctorId,
+        booking.scheduledAt,
+      );
+    }
   }
 
   private async handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
