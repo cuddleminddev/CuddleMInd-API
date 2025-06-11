@@ -1,18 +1,12 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { StripeService } from './stripe.service';
 import { StripeController } from './stripe.controller';
+import { BookingsModule } from 'src/bookings/bookings.module';
 
 @Module({
-  imports: [ConfigModule],
-  providers: [
-    {
-      provide: 'STRIPE_SECRET',
-      useFactory: (cs: ConfigService) => cs.get<string>('STRIPE_SECRET_KEY'),
-      inject: [ConfigService],
-    },
-    StripeService,
-  ],
+  imports: [ConfigModule, forwardRef(() => BookingsModule)],
+  providers: [StripeService],
   controllers: [StripeController],
   exports: [StripeService],
 })
