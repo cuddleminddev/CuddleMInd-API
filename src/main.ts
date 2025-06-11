@@ -12,7 +12,7 @@ async function bootstrap() {
 
   // Stripe webhook needs raw body
   app.use(
-    '/api/webhooks/stripe',
+    '/webhooks/stripe',
     json({
       verify: (req: any, res, buf) => {
         req.rawBody = buf;

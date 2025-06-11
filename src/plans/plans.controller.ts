@@ -9,6 +9,9 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
+  Req,
+  BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PlansService } from './plans.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -24,6 +27,8 @@ import { Roles } from 'src/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { ResponseService } from 'src/response/response.service';
+import { StripeService } from 'src/stripe/stripe.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @ApiTags('Plans')
 @Controller('plans')
@@ -31,6 +36,8 @@ export class PlansController {
   constructor(
     private readonly planService: PlansService,
     private readonly responseService: ResponseService,
+    private readonly stripeService: StripeService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get()
@@ -41,6 +48,61 @@ export class PlansController {
     return this.responseService.successResponse(
       'Plans fetched successfully',
       plans,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':packageId/purchase')
+  async purchasePlan(@Param('packageId') packageId: string, @Req() req: any) {
+    const userId = req.user.id;
+
+    const userPlanExist = await this
+
+    const plan = await this.prisma.planPackage.findUnique({
+      where: { id: packageId },
+    });
+
+    if (!plan) {
+      throw new NotFoundException('Plan not found');
+    }
+
+    if (plan.isActive == false) {
+      throw new BadRequestException('Plan is not active');
+    }
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + plan.timePeriod);
+
+    // Pre-create userPlan with isActive: false
+    const userPlan = await this.prisma.userPlan.create({
+      data: {
+        patientId: userId,
+        packageId,
+        bookingsPending: plan.bookingFrequency,
+        startDate,
+        endDate,
+        isActive: false,
+      },
+    });
+
+    const metadata = {
+      packageId,
+      userId,
+      userPlanId: userPlan.id,
+      type: 'plan',
+    };
+
+    const secret = await this.stripeService.createPaymentIntent(
+      userId,
+      Number(plan.amount),
+      'plan',
+      metadata,
+    );
+
+    return this.responseService.successResponse(
+      'Success. Proceed to payment',
+      secret,
     );
   }
 

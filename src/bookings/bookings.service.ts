@@ -6,13 +6,13 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { PaymentsService } from 'src/payments/payments.service';
 import { BookingStatus, PaymentType, SessionType } from '@prisma/client';
 import dayjs from 'dayjs';
 import { GetTimeSlotsDto } from './dto/get-time-slots.dto';
 import isBetween from 'dayjs/plugin/isBetween';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import { StripeService } from 'src/stripe/stripe.service';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -43,7 +43,7 @@ function isSlotAvailable(
 export class BookingsService {
   constructor(
     private prisma: PrismaService,
-    private paymentsService: PaymentsService,
+    private stripeService: StripeService,
   ) {}
 
   // Create booking with plan or one-time payment
@@ -67,11 +67,16 @@ export class BookingsService {
 
     if (paymentType === PaymentType.one_time) {
       // Create payment intent for one-time
-      const paymentIntent = await this.paymentsService.createPaymentIntent({
-        amount: Number(consultationCharge) * 100, // in paise for INR
-        currency: 'inr',
-        metadata: { patientId, doctorId: assignedDoctorId },
-      });
+      const paymentIntent = await this.stripeService.createPaymentIntent(
+        patientId, 
+        Number(consultationCharge), 
+        PaymentType.one_time,
+        {
+          patientId,
+          doctorId: assignedDoctorId,
+          // optionally include bookingId if you want to track post-payment
+        },
+      );
 
       return {
         paymentIntent,
