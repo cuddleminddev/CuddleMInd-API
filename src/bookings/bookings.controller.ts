@@ -60,7 +60,6 @@ export class BookingsController {
       createBookingDto,
       clientId,
     );
-
     return this.responseService.successResponse(
       'Booking processed successfully.',
       result,
@@ -89,6 +88,15 @@ export class BookingsController {
       'Bookings retrieved successfully',
       bookings,
     );
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('doctor')
+  @Get('doctor/upcoming')
+  @ApiOperation({ summary: 'List Upcomming Bookings for  Doctors' })
+  async getDoctorUpcomingBookings(@Req() req: Request) {
+    const doctorId = (req.user as any).id;
+    return this.bookingsService.getUpcomingBookingsForDoctor(doctorId);
   }
 
   @Get('/timeslots')

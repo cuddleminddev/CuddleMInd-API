@@ -113,13 +113,92 @@ export class UsersService {
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      include: { role: true },
+      include: {
+        role: true,
+        doctorProfile: true,
+        userPlans: {
+          include: {
+            package: true,
+            bookings: true,
+          },
+        },
+        bookingsAsDoctor: {
+          include: {
+            patient: { select: { id: true, name: true } },
+            review: true,
+          },
+        },
+        bookingsAsPatient: {
+          include: {
+            doctor: { select: { id: true, name: true } },
+            review: true,
+          },
+        },
+        doctorReviews: {
+          include: {
+            patient: { select: { id: true, name: true } },
+          },
+        },
+        patientReviews: {
+          include: {
+            doctor: { select: { id: true, name: true } },
+          },
+        },
+        transactions: {
+          include: {
+            booking: true,
+            plan: true,
+          },
+        },
+        doctorUnavailabilities: true,
+        chatSessionsAsPatient: {
+          include: {
+            support: { select: { id: true, name: true } },
+          },
+        },
+        chatSessionsAsSupport: {
+          include: {
+            patient: { select: { id: true, name: true } },
+          },
+        },
+      },
     });
 
     if (!user) throw new NotFoundException(`User with ID ${id} not found`);
 
     delete user.password;
-    return user;
+
+    const isDoctor = user.role.name === 'doctor';
+    const isPatient = user.role.name === 'client';
+
+    const nowUtc = new Date(new Date().toISOString());
+
+    const nextBooking = await this.prisma.booking.findFirst({
+      where: {
+        ...(isDoctor ? { doctorId: id } : { patientId: id }),
+        status: 'confirmed',
+        scheduledAt: {
+          gt: nowUtc,
+        },
+      },
+      orderBy: { scheduledAt: 'asc' },
+      include: {
+        doctor: { select: { id: true, name: true } },
+        patient: { select: { id: true, name: true } },
+        userPlan: {
+          include: {
+            package: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...user,
+      isDoctor,
+      isPatient,
+      nextBooking,
+    };
   }
 
   async findOrCreateUser(data: {
