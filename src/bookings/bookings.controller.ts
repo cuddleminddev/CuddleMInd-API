@@ -96,7 +96,12 @@ export class BookingsController {
   @ApiOperation({ summary: 'List Upcomming Bookings for  Doctors' })
   async getDoctorUpcomingBookings(@Req() req: Request) {
     const doctorId = (req.user as any).id;
-    return this.bookingsService.getUpcomingBookingsForDoctor(doctorId);
+    const data =
+      await this.bookingsService.getUpcomingBookingsForDoctor(doctorId);
+    return this.responseService.successResponse(
+      'upcomming bookings list',
+      data,
+    );
   }
 
   @Get('/timeslots')
