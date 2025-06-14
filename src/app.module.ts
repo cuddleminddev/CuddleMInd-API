@@ -12,6 +12,7 @@ import { ChatModule } from './chat/chat.module';
 import { PlansModule } from './plans/plans.module';
 import { ReviewModule } from './review/review.module';
 import { StripeModule } from './stripe/stripe.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { StripeModule } from './stripe/stripe.module';
     PlansModule,
     ReviewModule,
     StripeModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}

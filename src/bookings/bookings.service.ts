@@ -9,7 +9,13 @@ import {
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { BookingStatus, PaymentType, SessionType } from '@prisma/client';
+import {
+  Booking,
+  BookingStatus,
+  PaymentType,
+  SessionStatusEnum,
+  SessionType,
+} from '@prisma/client';
 import dayjs from 'dayjs';
 import { GetTimeSlotsDto } from './dto/get-time-slots.dto';
 import isBetween from 'dayjs/plugin/isBetween';
@@ -97,10 +103,10 @@ export class BookingsService {
           scheduledAt: new Date(scheduledAt),
           type,
           paymentType,
-          isPaid: false, // <-- Payment not confirmed yet
+          isPaid: false,
           userPlanId: null,
           amount: consultationCharge,
-          status: BookingStatus.pending, // <-- Mark as pending until payment is completed
+          status: BookingStatus.pending,
         },
       });
 
@@ -111,7 +117,7 @@ export class BookingsService {
         {
           patientId,
           doctorId: assignedDoctorId,
-          bookingId: booking.id, // Optional: attach booking ID for later confirmation
+          bookingId: booking.id,
         },
       );
 
@@ -124,38 +130,10 @@ export class BookingsService {
 
     // Plan payment
     if (paymentType === PaymentType.plan) {
-      if (activePlans.length === 0) {
-        throw new BadRequestException('No active plans found for user');
-      }
-
       const selectedPlan = activePlans.find((p) => p.bookingsPending > 0);
 
       if (!selectedPlan) {
         throw new BadRequestException('Plan usage limit reached');
-      }
-
-      const frequencyInDays = selectedPlan.package.timePeriod;
-
-      const lastBooking = await this.prisma.booking.findFirst({
-        where: {
-          patientId,
-          userPlanId: selectedPlan.id,
-          status: BookingStatus.confirmed,
-        },
-        orderBy: { scheduledAt: 'desc' },
-      });
-
-      if (lastBooking) {
-        const nextAllowedDate = dayjs(lastBooking.scheduledAt).add(
-          frequencyInDays,
-          'day',
-        );
-
-        if (dayjs(scheduledAt).isBefore(nextAllowedDate)) {
-          throw new BadRequestException(
-            `You can only book after ${nextAllowedDate.format('YYYY-MM-DD')}`,
-          );
-        }
       }
 
       const booking = await this.prisma.booking.create({
@@ -178,6 +156,16 @@ export class BookingsService {
       });
 
       await this.markDoctorUnavailable(assignedDoctorId, new Date(scheduledAt));
+
+      // Create consultation session
+      await this.prisma.consultationSession.create({
+        data: {
+          bookingId: booking.id,
+          date: new Date(scheduledAt),
+          status: 'pending',
+          sessionType: type,
+        },
+      });
 
       return booking;
     }
@@ -401,6 +389,41 @@ export class BookingsService {
         startTime: slotStart.toDate(),
         endTime: slotEnd.toDate(),
         reason: 'Booked session',
+      },
+    });
+  }
+
+  async createConsultationSession(booking: Booking) {
+    await this.prisma.consultationSession.create({
+      data: {
+        bookingId: booking.id,
+        date: booking.scheduledAt,
+        status: SessionStatusEnum.pending,
+        sessionType: booking.type,
+      },
+    });
+  }
+
+  async getUpcomingBookingsForDoctor(doctorId: string) {
+    return this.prisma.booking.findMany({
+      where: {
+        doctorId,
+        status: 'confirmed',
+        scheduledAt: { gt: new Date() },
+      },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
+        consultationSession: true,
+      },
+      orderBy: {
+        scheduledAt: 'asc',
       },
     });
   }

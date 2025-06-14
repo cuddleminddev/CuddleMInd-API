@@ -184,6 +184,9 @@ export class StripeService {
         },
       });
 
+      // Add consultation session now
+      await this.bookingsService.createConsultationSession(booking);
+
       // Mark doctor unavailable for the booked time
       await this.bookingsService.markDoctorUnavailable(
         booking.doctorId,
