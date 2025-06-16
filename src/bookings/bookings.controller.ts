@@ -99,7 +99,7 @@ export class BookingsController {
     const data =
       await this.bookingsService.getUpcomingBookingsForDoctor(doctorId);
     return this.responseService.successResponse(
-      'upcomming bookings list',
+      'upcoming bookings list',
       data,
     );
   }

@@ -17,6 +17,7 @@ export class CreateBookingDto {
 
   @ApiProperty()
   @IsUUID()
+  @IsOptional()
   patientId: string;
 
   // @ApiProperty()

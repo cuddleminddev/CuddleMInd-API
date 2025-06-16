@@ -181,19 +181,32 @@ export class BookingsService {
     toDate?: string;
   }) {
     const { patientId, doctorId, fromDate, toDate } = filter || {};
-
     const where: any = {};
 
     if (patientId) where.patientId = patientId;
     if (doctorId) where.doctorId = doctorId;
 
     if (fromDate || toDate) {
-      where.scheduledAt = {};
+      const scheduledAt: any = {};
+
       if (fromDate) {
-        where.scheduledAt.gte = new Date(fromDate);
+        const from = new Date(fromDate);
+        if (!isNaN(from.getTime())) {
+          from.setHours(0, 0, 0, 0); // Start of day
+          scheduledAt.gte = from;
+        }
       }
+
       if (toDate) {
-        where.scheduledAt.lte = new Date(toDate);
+        const to = new Date(toDate);
+        if (!isNaN(to.getTime())) {
+          to.setHours(23, 59, 59, 999); // End of day
+          scheduledAt.lte = to;
+        }
+      }
+
+      if (Object.keys(scheduledAt).length > 0) {
+        where.scheduledAt = scheduledAt;
       }
     }
 
