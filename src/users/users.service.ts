@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcrypt';
+import dayjs from 'dayjs';
 
 export interface FindAllOptions {
   page: number;
@@ -94,6 +95,61 @@ export class UsersService {
       total,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  async getAvailableDoctorsInNext90Mins() {
+    const now = new Date();
+    const endWindow = dayjs(now).add(90, 'minute').toDate();
+
+    // Get doctors who have no bookings or unavailability in the next 90 minutes
+    const busyDoctorIds = await this.prisma.doctorUnavailability.findMany({
+      where: {
+        OR: [
+          {
+            startTime: { lte: endWindow },
+            endTime: { gte: now },
+          },
+        ],
+      },
+      select: { doctorId: true },
+    });
+
+    const bookedDoctorIds = await this.prisma.booking.findMany({
+      where: {
+        scheduledAt: {
+          gte: now,
+          lte: endWindow,
+        },
+        status: {
+          in: ['pending', 'confirmed'],
+        },
+      },
+      select: { doctorId: true },
+    });
+
+    const excludeDoctorIds = [
+      ...new Set([
+        ...busyDoctorIds.map((d) => d.doctorId),
+        ...bookedDoctorIds.map((d) => d.doctorId),
+      ]),
+    ];
+
+    const availableDoctors = await this.prisma.user.findMany({
+      where: {
+        role: {
+          name: 'doctor',
+        },
+        id: {
+          notIn: excludeDoctorIds,
+        },
+        status: 'active',
+      },
+      include: {
+        doctorProfile: true,
+      },
+    });
+
+    return availableDoctors;
   }
 
   async findByRole(roleName: string) {

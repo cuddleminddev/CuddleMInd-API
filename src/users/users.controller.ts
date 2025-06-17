@@ -75,6 +75,16 @@ export class UsersController {
     return this.responseService.successResponse('Users Found', result);
   }
 
+  @Get('doctors')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff')
+  @ApiOperation({ summary: 'Get all doctor users' })
+  @ApiResponse({ status: 200, description: 'Doctors Found' })
+  async findAvailableDoctors() {
+    const staff = await this.usersService.getAvailableDoctorsInNext90Mins();
+    return this.responseService.successResponse('Doctors Found', staff);
+  }
+
   @Get('staff')
   @UseGuards(RolesGuard)
   @Roles('admin')
