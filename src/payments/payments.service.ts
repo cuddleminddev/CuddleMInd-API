@@ -1,12 +1,8 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { CreatePaymentDto } from './dto/create-payment.dto';
-import { ProcessRefundDto } from './dto/process-refund.dto';
-
+import { Injectable } from '@nestjs/common';
+import { Stripe } from 'stripe';
+import { InjectStripe } from 'nestjs-stripe';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { PaymentType, TransactionStatus } from '@prisma/client';
 
 @Injectable()
 export class PaymentsService {
@@ -14,8 +10,23 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
   ) {}
 
-
-
-
-  
+  async createOneTimePayment({
+    userId,
+    bookingId,
+    amount,
+  }: {
+    userId: string;
+    bookingId: string;
+    amount: number;
+  }) {
+    return this.prisma.transaction.create({
+      data: {
+        userId,
+        bookingId,
+        amount,
+        status: TransactionStatus.success,
+        paymentType: PaymentType.one_time,
+      },
+    });
+  }
 }

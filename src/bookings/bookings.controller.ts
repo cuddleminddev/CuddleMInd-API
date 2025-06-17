@@ -1,3 +1,5 @@
+// src/bookings/bookings.controller.ts
+
 import {
   Controller,
   Get,
@@ -6,111 +8,146 @@ import {
   Patch,
   Param,
   Delete,
-  UseGuards,
-  Request,
   Query,
-  BadRequestException,
-  ConflictException,
+  UseGuards,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
 import {
-  Prisma,
-} from '@prisma/client';
-import { AssignStaffDto } from './dto/assign-staff.dto';
-import { CreateReviewDto } from './dto/create-review.dto';
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { ResponseService } from 'src/response/response.service';
+import { GetTimeSlotsDto } from './dto/get-time-slots.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Public } from 'src/auth/decorators/public.decorator';
-import { CreateUserDto } from 'src/users/dto/create-user.dto';
+import { Request } from 'express';
 import { UsersService } from 'src/users/users.service';
-import { PaymentsService } from 'src/payments/payments.service';
-import { stringify } from 'querystring';
-import { RescheduleDto } from './dto/reschedule.dto';
+import { PlansService } from 'src/plans/plans.service';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
-function getFirstDayOfNextMonth(): Date {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth(); // 0-indexed
-  return new Date(year, month + 1, 1);
-}
-
+@ApiTags('Bookings')
+@ApiBearerAuth()
 @Controller('bookings')
 @UseGuards(JwtAuthGuard)
 export class BookingsController {
   constructor(
     private readonly bookingsService: BookingsService,
     private readonly responseService: ResponseService,
-    private readonly usersService: UsersService,
-    private readonly paymentsService: PaymentsService,
   ) {}
 
-  @Get()
-  async findAll(
-    @Request() req,
-   
+  @UseGuards(RolesGuard)
+  @Roles('client')
+  @Post()
+  @ApiOperation({ summary: 'Create a new booking (One-time or Plan)' })
+  @ApiResponse({
+    status: 201,
+    description: 'Booking created or payment intent returned.',
+  })
+  async create(
+    @Body() createBookingDto: CreateBookingDto,
+    @Req() req: Request,
   ) {
-    //const param: Partial<Booking> = {};
+    const clientId = (req.user as any).id;
 
-
-    const bookings = await this.bookingsService.findAll(
-      req.user.role,
-      req.user.id,
-      {}//param,
+    const result = await this.bookingsService.create(
+      createBookingDto,
+      clientId,
     );
-    return this.responseService.successResponse('Bookings list', bookings);
+    return this.responseService.successResponse(
+      'Booking processed successfully.',
+      result,
+    );
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'Retrieve all bookings' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of bookings retrieved successfully.',
+  })
+  async listBookings(
+    @Query('patientId') patientId?: string,
+    @Query('doctorId') doctorId?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+  ) {
+    const bookings = await this.bookingsService.findAll({
+      patientId,
+      doctorId,
+      fromDate,
+      toDate,
+    });
+    return this.responseService.successResponse(
+      'Bookings retrieved successfully',
+      bookings,
+    );
+  }
+
+  @UseGuards(RolesGuard)
+  @Roles('doctor')
+  @Get('doctor/upcoming')
+  @ApiOperation({ summary: 'List Upcomming Bookings for  Doctors' })
+  async getDoctorUpcomingBookings(@Req() req: Request) {
+    const doctorId = (req.user as any).id;
+    const data =
+      await this.bookingsService.getUpcomingBookingsForDoctor(doctorId);
+    return this.responseService.successResponse(
+      'upcoming bookings list',
+      data,
+    );
+  }
+
+  @Get('/timeslots')
+  @Public()
+  @ApiOperation({ summary: 'List available time slots for a doctor on a date' })
+  async getAvailableTimeSlots(@Query() dto: GetTimeSlotsDto) {
+    const timeslots = await this.bookingsService.getAvailableSlots(dto);
+    return this.responseService.successResponse(
+      'Available timeslots listed',
+      timeslots,
+    );
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string, @Request() req) {
-    const booking = await this.bookingsService.findOne(
-      id,
-      req.user.id,
-      req.user.role,
+  @ApiOperation({ summary: 'Retrieve a booking by ID' })
+  @ApiResponse({ status: 200, description: 'Booking retrieved successfully.' })
+  async getBookingById(@Param('id') id: string) {
+    const booking = await this.bookingsService.findOne(id);
+    return this.responseService.successResponse(
+      'Booking retrieved successfully',
+      booking,
     );
-    return this.responseService.successResponse('Booking details', booking);
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Update a booking by ID' })
+  @ApiResponse({ status: 200, description: 'Booking updated successfully.' })
   async update(
     @Param('id') id: string,
     @Body() updateBookingDto: UpdateBookingDto,
-    @Request() req,
   ) {
-  
+    const updated = await this.bookingsService.update(id, updateBookingDto);
+    return this.responseService.successResponse(
+      'Booking updated successfully',
+      updated,
+    );
   }
 
-
-  @Post(':id/reschedule')
-  @UseGuards(RolesGuard)
-  @Roles('customer')
-  async reschedule(
-    @Param('id') id: string,
-    @Body() rescheduleDto: RescheduleDto,
-    @Request() req,
-  ) {
-    // return this.bookingsService.assignStaff(
-    //   id,
-    //   assignStaffDto.staffId,
-    //   req.user.id,
-    // );
-  }
-
-  @Post(':id/cancel')
-  async cancel(@Param('id') id: string, @Request() req) {
-   
-  }
-
-  @Post(':id/review')
-  @UseGuards(RolesGuard)
-  @Roles('customer')
-  async createReview(
-    @Param('id') id: string,
-    @Body() createReviewDto: CreateReviewDto,
-    @Request() req,
-  ) {
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a booking by ID' })
+  @ApiResponse({ status: 200, description: 'Booking deleted successfully.' })
+  async remove(@Param('id') id: string) {
+    const removed = await this.bookingsService.remove(id);
+    return this.responseService.successResponse(
+      'Booking deleted successfully',
+      removed,
+    );
   }
 }

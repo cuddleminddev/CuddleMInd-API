@@ -1,197 +1,246 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+  // This is your Prisma schema file,
+  // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+  generator client {
+    provider = "prisma-client-js"
+  }
 
-generator client {
-  provider = "prisma-client-js"
-}
+  datasource db {
+    provider = "mysql"
+    url      = env("DATABASE_URL")
+  }
 
-datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
-}
+  // Enums
+  enum SessionType {
+    audio
+    video
+  }
 
-// enums
-enum SessionType {
-  audio
-  video
-}
+  enum PaymentType {
+    one_time
+    plan
+  }
 
-enum PaymentType {
-  one_time
-  plan
-}
+  enum BookingStatus {
+    pending
+    confirmed
+    completed
+    cancelled
+    missed
+  }
 
-enum BookingStatus {
-  pending
-  confirmed
-  completed
-  cancelled
-  missed
-}
+  enum TransactionStatus {
+    pending
+    success
+    failed
+  }
 
-enum TransactionStatus {
-  pending
-  success
-  failed
-}
+  enum SessionStatusEnum {
+    pending
+    ongoing
+    canceled
+    completed
+  }
 
-enum SessionStatusEnum {
-  pending
-  ongoing
-  canceled
-  completed
-}
+  enum UserStatus {
+    active
+    disabled
+  }
 
-enum UserStatus{
-  active
-  disabled
-  online
-}
+  // Tables
+  model User {
+    id             String     @id @default(uuid()) @map("id")
+    name           String     @map("name")
+    email          String     @unique @map("email")
+    phone          String?    @map("phone")
+    status         UserStatus @default(active) @map("status")
+    roleId         String     @map("role_id")
+    profilePicture String?    @map("profile_picture")
+    createdAt      DateTime   @default(now()) @map("created_at")
+    updatedAt      DateTime   @updatedAt @map("updated_at")
+    password       String?    @map("password")
 
-// models
-model User {
-  id         String    @id @default(uuid()) @map("id")
-  name       String
-  email      String    @unique
-  phone      String?
-  status     UserStatus  @default(active)
-  roleId     String    @map("role_id")
-  role       Role      @relation(fields: [roleId], references: [id])
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  password          String?
-  bookingsAsDoctor Booking[] @relation("DoctorBookings")
-  bookingsAsPatient Booking[] @relation("PatientBookings")
-  userPlans        UserPlan[]
-  transactions     Transaction[]
-  otps             UserOtp[]
-  doctorUnavailabilities DoctorUnavailability[]
+    role                   Role                   @relation(fields: [roleId], references: [id])
+    userOtps               UserOtp[]
+    userPlans              UserPlan[]             @relation("PatientPlans")
+    bookingsAsDoctor       Booking[]              @relation("DoctorBookings")
+    bookingsAsPatient      Booking[]              @relation("PatientBookings")
+    transactions           Transaction[]
+    doctorUnavailabilities DoctorUnavailability[]
+    doctorProfile          DoctorProfile?
+    chatSessionsAsPatient  ChatSession[]          @relation("ChatPatient")
+    chatSessionsAsSupport  ChatSession[]          @relation("ChatSupport")
+    patientReviews         Review[]               @relation("PatientReviews")
+    doctorReviews          Review[]               @relation("DoctorReviews")
 
-  @@map("users")
-}
+    @@map("users")
+  }
 
-model Role {
-  id        String   @id @default(uuid()) @map("id")
-  name      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  model DoctorProfile {
+    id                      String  @id @default(uuid()) @map("id")
+    doctorId                String  @unique @map("doctor_id")
+    audioConsultationCharge Decimal @map("audio_consultation_charge")
+    videoConsultationCharge Decimal @map("video_consultation_charge")
 
-  users     User[]
+    doctor User @relation(fields: [doctorId], references: [id])
 
-  @@map("roles")
-}
+    @@map("doctor_profiles")
+  }
 
-model UserOtp {
-  id         String   @id @default(uuid()) @map("id")
-  userId     String   @map("user_id")
-  user       User     @relation(fields: [userId], references: [id])
-  otpSecret  String   @map("otp_secret")
-  createdAt  DateTime @default(now()) @map("created_at")
-  expiresAt  DateTime @map("expires_at")
+  model Role {
+    id        String   @id @default(uuid()) @map("id")
+    name      String   @unique @map("name")
+    createdAt DateTime @default(now()) @map("created_at")
+    updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("user_otps")
-}
+    users User[]
 
-model PlanPackage {
-  id                 String    @id @default(uuid()) @map("id")
-  name              String
-  bookingFrequency  Int       @map("booking_frequency")
-  timePeriod        Int       @map("time_period")
-  amount            Decimal   @db.Decimal(10, 2)
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+    @@map("roles")
+  }
 
-  transactions      Transaction[]
-  userPlans         UserPlan[]
+  model UserOtp {
+    id        String   @id @default(uuid()) @map("id")
+    userId    String   @map("user_id")
+    otpSecret String   @map("otp_secret")
+    createdAt DateTime @default(now()) @map("created_at")
+    expiresAt DateTime @map("expires_at")
 
-  @@map("plan_packages")
-}
+    user User @relation(fields: [userId], references: [id])
 
-model UserPlan {
-  id               String    @id @default(uuid()) @map("id")
-  patientId        String    @map("patient_id")
-  patient          User      @relation(fields: [patientId], references: [id])
-  packageId        String    @map("package_id")
-  package          PlanPackage @relation(fields: [packageId], references: [id])
-  bookingsPending  Int       @map("bookings_pending")
-  startDate        DateTime  @map("start_date")
-  endDate          DateTime  @map("end_date")
-  isActive         Boolean   @map("is_active")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+    @@map("user_otps")
+  }
 
-  bookings         Booking[]
+  model PlanPackage {
+    id               String   @id @default(uuid()) @map("id")
+    name             String   @map("name")
+    bookingFrequency Int      @map("booking_frequency")
+    timePeriod       Int      @map("time_period")
+    amount           Decimal  @map("amount")
+    isActive         Boolean  @default(true) @map("is_active")
+    createdAt        DateTime @default(now()) @map("created_at")
+    updatedAt        DateTime @updatedAt @map("updated_at")
 
-  @@map("user_plans")
-}
+    userPlans    UserPlan[]
+    transactions Transaction[] @relation("PlanTransactions")
 
-model Transaction {
-  id             String           @id @default(uuid()) @map("id")
-  userId         String           @map("user_id")
-  user           User             @relation(fields: [userId], references: [id])
-  planPackageId  String?          @map("plan_package_id")
-  planPackage    PlanPackage?     @relation(fields: [planPackageId], references: [id])
-  bookingId      String?          @map("booking_id")
-  booking        Booking?         @relation(fields: [bookingId], references: [id])
-  amount         Decimal          @db.Decimal(10, 2)
-  paymentType    PaymentType      @map("payment_type")
-  status         TransactionStatus
-  createdAt      DateTime         @default(now()) @map("created_at")
+    @@map("plan_packages")
+  }
 
-  @@map("transactions")
-}
+  model UserPlan {
+    id              String    @id @default(uuid()) @map("id")
+    patientId       String    @map("patient_id")
+    packageId       String    @map("package_id")
+    bookingsPending Int       @map("bookings_pending")
+    startDate       DateTime  @map("start_date")
+    endDate         DateTime? @map("end_date")
+    isActive        Boolean   @map("is_active")
+    createdAt       DateTime  @default(now()) @map("created_at")
+    updatedAt       DateTime  @updatedAt @map("updated_at")
 
-model Booking {
-  id              String         @id @default(uuid()) @map("id")
-  doctorId        String         @map("doctor_id")
-  doctor          User           @relation("DoctorBookings", fields: [doctorId], references: [id])
-  patientId       String         @map("patient_id")
-  patient         User           @relation("PatientBookings", fields: [patientId], references: [id])
-  userPlanId      String?        @map("user_plan_id")
-  userPlan        UserPlan?      @relation(fields: [userPlanId], references: [id])
-  scheduledAt     DateTime       @map("scheduled_at")
-  durationMinutes Int            @map("duration_minutes")
-  isPaid          Boolean        @map("is_paid")
-  paymentType     PaymentType    @map("payment_type")
-  type            SessionType
-  status          BookingStatus
-  createdAt       DateTime       @default(now()) @map("created_at")
+    patient  User        @relation("PatientPlans", fields: [patientId], references: [id])
+    package  PlanPackage @relation(fields: [packageId], references: [id])
+    bookings Booking[]
 
-  sessions        ConsultationSession[]
-  transaction     Transaction[]
+    @@map("user_plans")
+  }
 
-  @@map("bookings")
-}
+  model Transaction {
+    id            String            @id @default(uuid()) @map("id")
+    userId        String            @map("user_id")
+    planId        String?           @unique @map("plan_id")
+    bookingId     String?           @unique @map("booking_id")
+    amount        Decimal           @map("amount")
+    paymentType   PaymentType       @map("payment_type")
+    status        TransactionStatus @map("status")
+    createdAt     DateTime          @default(now()) @map("created_at")
+    remainingUses Int               @default(0) @map("remaining_uses")
 
-model ConsultationSession {
-  id           String            @id @default(uuid()) @map("id")
-  bookingId    String            @map("booking_id")
-  booking      Booking           @relation(fields: [bookingId], references: [id])
-  date         DateTime
-  status       SessionStatusEnum
-  startedAt    DateTime?         @map("started_at")
-  endedAt      DateTime?         @map("ended_at")
-  sessionType  SessionType       @map("session_type")
-  notes        String?
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+    user    User         @relation(fields: [userId], references: [id])
+    booking Booking?     @relation(fields: [bookingId], references: [id])
+    plan    PlanPackage? @relation("PlanTransactions", fields: [planId], references: [id])
 
-  @@map("consultation_session")
-}
+    @@map("transactions")
+  }
 
-model DoctorUnavailability {
-  id         String   @id @default(uuid()) @map("id")
-  doctorId   String   @map("doctor_id")
-  doctor     User     @relation(fields: [doctorId], references: [id])
-  date       DateTime
-  startTime  DateTime @map("start_time")
-  endTime    DateTime @map("end_time")
-  reason     String?
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  model Booking {
+    id          String        @id @default(uuid()) @map("id")
+    doctorId    String        @map("doctor_id")
+    patientId   String        @map("patient_id")
+    scheduledAt DateTime      @map("scheduled_at")
+    type        SessionType   @map("type")
+    status      BookingStatus @default(pending) @map("status")
+    isPaid      Boolean       @default(false) @map("is_paid")
+    paymentType PaymentType   @map("payment_type")
+    userPlanId  String?       @map("user_plan_id")
+    amount      Decimal       @default(0.0) @map("amount")
+    createdAt   DateTime      @default(now()) @map("created_at")
+    updatedAt   DateTime      @updatedAt @map("updated_at")
 
-  @@map("doctor_unavailabalities")
-}
+    doctor      User         @relation("DoctorBookings", fields: [doctorId], references: [id])
+    patient     User         @relation("PatientBookings", fields: [patientId], references: [id])
+    userPlan    UserPlan?    @relation(fields: [userPlanId], references: [id])
+    transaction Transaction?
+    review      Review?
+
+    consultationSession ConsultationSession? @relation("BookingToSession")
+
+    @@map("bookings")
+  }
+
+  model ConsultationSession {
+    id          String            @id @default(uuid()) @map("id")
+    bookingId   String            @unique @map("booking_id")
+    date        DateTime          @map("date")
+    status      SessionStatusEnum @map("status")
+    startedAt   DateTime?         @map("started_at")
+    endedAt     DateTime?         @map("ended_at")
+    sessionType SessionType       @map("session_type")
+    notes       String?           @map("notes")
+    createdAt   DateTime          @default(now()) @map("created_at")
+
+    booking Booking @relation("BookingToSession", fields: [bookingId], references: [id])
+
+    @@map("consultation_sessions")
+  }
+
+  model DoctorUnavailability {
+    id        String   @id @default(uuid()) @map("id")
+    doctorId  String   @map("doctor_id")
+    date      DateTime @map("date")
+    startTime DateTime @map("start_time")
+    endTime   DateTime @map("end_time")
+    reason    String   @map("reason")
+    createdAt DateTime @default(now()) @map("created_at")
+
+    doctor User @relation(fields: [doctorId], references: [id])
+
+    @@map("doctor_unavailabalities")
+  }
+
+  model ChatSession {
+    id        String            @id @default(uuid()) @map("id")
+    patientId String            @map("patient_id")
+    supportId String?           @map("support_id")
+    startedAt DateTime          @default(now()) @map("started_at")
+    endedAt   DateTime?         @map("ended_at")
+    status    SessionStatusEnum @default(pending) @map("status")
+
+    patient User  @relation("ChatPatient", fields: [patientId], references: [id])
+    support User? @relation("ChatSupport", fields: [supportId], references: [id])
+
+    @@map("chat_sessions")
+  }
+
+  model Review {
+    id        String   @id @default(uuid()) @map("id")
+    patientId String   @map("patient_id")
+    doctorId  String   @map("doctor_id")
+    bookingId String?  @unique @map("booking_id") // ✅ MUST be unique for 1:1
+    rating    Int      @map("rating")
+    comment   String?  @map("comment")
+    createdAt DateTime @default(now()) @map("created_at")
+
+    patient User     @relation("PatientReviews", fields: [patientId], references: [id])
+    doctor  User     @relation("DoctorReviews", fields: [doctorId], references: [id])
+    booking Booking? @relation(fields: [bookingId], references: [id])
+  }

@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { json, urlencoded } from 'express';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,10 +12,10 @@ async function bootstrap() {
 
   // Stripe webhook needs raw body
   app.use(
-    '/api/webhooks/stripe',
+    '/v1/webhook/stripe',
     json({
       verify: (req: any, res, buf) => {
-        req.rawBody = buf; // 👈 Capture raw body here
+        req.rawBody = buf;
       },
     }),
   );
@@ -34,7 +35,19 @@ async function bootstrap() {
 
   app.enableCors();
 
+  // 🔹 Swagger Configuration
+  const config = new DocumentBuilder()
+    .setTitle('CuddleMind API')
+    .setDescription('Mental Health Consultation API')
+    .setVersion('1.0')
+    .addBearerAuth() // Enables JWT auth in Swagger
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document); // Swagger UI will be at /api/docs
+
+  // Start the server
   await app.listen(process.env.PORT || 3000);
-  console.log(`Application is running on: ${await app.getUrl()}`);
+  console.log(`🚀 Application is running on: ${await app.getUrl()}`);
 }
 bootstrap();

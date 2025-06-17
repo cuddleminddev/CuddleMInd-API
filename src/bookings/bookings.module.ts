@@ -5,13 +5,16 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ResponseModule } from 'src/response/response.module';
 import { UsersModule } from 'src/users/users.module';
 import { PaymentsModule } from 'src/payments/payments.module';
+import { StripeModule } from 'src/stripe/stripe.module';
+import { PlansModule } from 'src/plans/plans.module';
 
 @Module({
   imports: [
     PrismaModule,
     ResponseModule,
     UsersModule,
-    PaymentsModule,
+    forwardRef(() => StripeModule),
+    PlansModule,
   ],
   controllers: [BookingsController],
   providers: [BookingsService],
