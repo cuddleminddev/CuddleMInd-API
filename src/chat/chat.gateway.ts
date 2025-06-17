@@ -67,6 +67,30 @@ export class ChatGateway
     }
   }
 
+  @SubscribeMessage('send_doctor_card')
+  async handleSendDoctorCard(
+    @MessageBody()
+    payload: {
+      sessionId: string;
+      patientId: string;
+      doctorId: string;
+    },
+  ) {
+    const { sessionId, patientId, doctorId } = payload;
+
+    const doctor = await this.chatService.getDoctorCardData(doctorId); // You implement this
+
+    if (!doctor) return;
+
+    const patientSocket = this.patients.get(patientId);
+    if (!patientSocket) return;
+
+    patientSocket.emit('receive_doctor_card', {
+      sessionId,
+      doctor,
+    });
+  }
+
   @SubscribeMessage('request_chat')
   async handleChatRequest(@MessageBody() payload: { patientId: string }) {
     const { patientId } = payload;

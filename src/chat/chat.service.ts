@@ -88,6 +88,26 @@ export class ChatService {
     });
   }
 
+  async getDoctorCardData(doctorId: string) {
+    const doctor = await this.prisma.user.findUnique({
+      where: { id: doctorId },
+      include: {
+        doctorProfile: true,
+      },
+    });
+
+    if (!doctor || !doctor.doctorProfile) return null;
+
+    return {
+      id: doctor.id,
+      name: doctor.name,
+      email: doctor.email,
+      profilePicture: doctor.profilePicture,
+      audioConsultationCharge: doctor.doctorProfile.audioConsultationCharge,
+      videoConsultationCharge: doctor.doctorProfile.videoConsultationCharge,
+    };
+  }
+
   //Helper Functions
 
   async getUserById(id: string) {
