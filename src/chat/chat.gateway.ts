@@ -95,20 +95,23 @@ export class ChatGateway
   async handleChatRequest(@MessageBody() payload: { patientId: string }) {
     const { patientId } = payload;
 
-    const patient = await this.chatService.getUserById(patientId); // Implement this if not already
+    const patient = await this.chatService.getUserById(patientId);
     if (!patient) return;
 
     const chatSession = await this.chatService.createChatSession(patientId);
 
+    const timestamp = new Date().toISOString();
+
     if (this.consultants.size === 0) {
       const patientSocket = this.patients.get(patientId);
-      patientSocket?.emit('no_consultants_available');
+      patientSocket?.emit('no_consultants_available', { timestamp });
     } else {
       for (const [, consultantSocket] of this.consultants) {
         consultantSocket.emit('new_chat_request', {
           sessionId: chatSession.id,
           patientId,
           patientName: patient.name,
+          timestamp,
         });
       }
     }
