@@ -11,6 +11,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { BookingsService } from 'src/bookings/bookings.service';
+import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -24,7 +26,10 @@ export class ChatGateway
   private consultants: Map<string, Socket> = new Map();
   private patients: Map<string, Socket> = new Map();
 
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly bookingService: BookingsService,
+  ) {}
 
   afterInit() {
     console.log('WebSocket initialized');
@@ -78,17 +83,80 @@ export class ChatGateway
   ) {
     const { sessionId, patientId, doctorId } = payload;
 
-    const doctor = await this.chatService.getDoctorCardData(doctorId); // You implement this
+    console.log('🟡 Received send_doctor_card request with payload:', {
+      sessionId,
+      patientId,
+      doctorId,
+    });
 
-    if (!doctor) return;
+    // Fetch doctor profile
+    const doctor = await this.chatService.getDoctorCardData(doctorId);
+    if (!doctor) {
+      console.error('❌ Doctor not found for ID:', doctorId);
+      const patientSocket = this.patients.get(patientId);
+      patientSocket?.emit('doctor_card_error', {
+        sessionId,
+        message: 'Doctor not found',
+      });
+      return;
+    }
+
+    console.log('✅ Doctor card data fetched:', doctor);
+
+    // Attempt booking
+    let bookingResult: any;
+    try {
+      const createBookingDto: CreateBookingDto = {
+        doctorId,
+        patientId,
+        scheduledAt: new Date(),
+        durationMinutes: 60,
+        paymentType: 'one_time',
+        type: 'video',
+      };
+
+      console.log(
+        '📦 Sending createBookingDto to bookingService.create:',
+        createBookingDto,
+      );
+
+      bookingResult = await this.bookingService.create(
+        createBookingDto,
+        patientId,
+      );
+
+      console.log('✅ Booking created successfully:', bookingResult);
+    } catch (error) {
+      console.error('❌ Booking creation failed:', error.message);
+      const patientSocket = this.patients.get(patientId);
+      patientSocket?.emit('doctor_card_error', {
+        sessionId,
+        message: error.message || 'Booking failed',
+      });
+      return;
+    }
 
     const patientSocket = this.patients.get(patientId);
-    if (!patientSocket) return;
+    if (!patientSocket) {
+      console.error('❌ Patient socket not found for ID:', patientId);
+      return;
+    }
 
-    patientSocket.emit('receive_doctor_card', {
+    const emitPayload = {
       sessionId,
       doctor,
+      booking: bookingResult.booking || bookingResult,
+      paymentIntent: bookingResult.paymentIntent || null,
+    };
+
+    console.log('📤 Emitting receive_doctor_card to patient socket:', {
+      socketId: patientSocket.id,
+      emitPayload,
     });
+
+    patientSocket.emit('receive_doctor_card', emitPayload);
+
+    console.log(`✅ Doctor card sent successfully to patient: ${patientId}`);
   }
 
   @SubscribeMessage('request_chat')

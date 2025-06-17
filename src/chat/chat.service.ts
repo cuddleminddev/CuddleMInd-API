@@ -96,15 +96,13 @@ export class ChatService {
       },
     });
 
-    if (!doctor || !doctor.doctorProfile) return null;
+    if (!doctor) return null;
 
     return {
       id: doctor.id,
       name: doctor.name,
       email: doctor.email,
       profilePicture: doctor.profilePicture,
-      audioConsultationCharge: doctor.doctorProfile.audioConsultationCharge,
-      videoConsultationCharge: doctor.doctorProfile.videoConsultationCharge,
     };
   }
 

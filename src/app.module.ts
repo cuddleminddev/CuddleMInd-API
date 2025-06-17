@@ -7,7 +7,6 @@ import { UsersModule } from './users/users.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ResponseModule } from './response/response.module';
-import { ScheduleModule } from '@nestjs/schedule';
 import { ChatModule } from './chat/chat.module';
 import { PlansModule } from './plans/plans.module';
 import { ReviewModule } from './review/review.module';
@@ -26,7 +25,6 @@ import { AnalyticsModule } from './analytics/analytics.module';
     BookingsModule,
     PaymentsModule,
     ResponseModule,
-    ScheduleModule.forRoot(),
     ChatModule,
     PlansModule,
     ReviewModule,
