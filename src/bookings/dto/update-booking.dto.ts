@@ -1,6 +1,11 @@
 import { PartialType } from '@nestjs/mapped-types';
 import { CreateBookingDto } from './create-booking.dto';
-import { BookingStatus, PaymentType, SessionType } from '@prisma/client';
+import {
+  BookingStatus,
+  BookingType,
+  PaymentType,
+  SessionType,
+} from '@prisma/client';
 import {
   IsBoolean,
   IsEnum,
@@ -51,5 +56,10 @@ export class UpdateBookingDto extends PartialType(CreateBookingDto) {
   @IsOptional()
   @IsEnum(SessionType)
   @ApiPropertyOptional({ enum: SessionType, description: 'Session type' })
-  type?: SessionType;
+  sessionType?: SessionType;
+
+  @IsOptional()
+  @IsEnum(BookingType)
+  @ApiPropertyOptional({ enum: BookingType, description: 'Booking type' })
+  type?: BookingType;
 }

@@ -7,7 +7,7 @@ import {
   IsOptional,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { PaymentType, SessionType } from '@prisma/client';
+import { PaymentType, SessionType, BookingType } from '@prisma/client';
 
 export class CreateBookingDto {
   @ApiProperty()
@@ -19,11 +19,6 @@ export class CreateBookingDto {
   @IsUUID()
   @IsOptional()
   patientId: string;
-
-  // @ApiProperty()
-  // @IsOptional()
-  // @IsUUID()
-  // userPlanId?: string;
 
   @ApiProperty()
   @IsDateString()
@@ -39,5 +34,9 @@ export class CreateBookingDto {
 
   @ApiProperty({ enum: SessionType })
   @IsEnum(SessionType)
-  type: SessionType;
+  sessionType: SessionType;
+
+  @ApiProperty({ enum: BookingType })
+  @IsEnum(BookingType)
+  type: BookingType; // Added field for manual/automatic
 }

@@ -58,7 +58,7 @@ export class BookingsService {
 
   // Create booking with plan or one-time payment
   async create(dto: CreateBookingDto, clientId: string) {
-    const { type, scheduledAt, doctorId, paymentType } = dto;
+    const { type, scheduledAt, doctorId, paymentType, sessionType } = dto;
 
     const patientId = clientId;
 
@@ -91,7 +91,7 @@ export class BookingsService {
 
     const consultationCharge = await this.getConsultationCharge(
       assignedDoctorId,
-      type,
+      sessionType,
     );
 
     // One-time payment
@@ -107,6 +107,7 @@ export class BookingsService {
           userPlanId: null,
           amount: consultationCharge,
           status: BookingStatus.pending,
+          sessionType, // Save manual/automatic type
         },
       });
 
@@ -147,6 +148,7 @@ export class BookingsService {
           userPlanId: selectedPlan.id,
           amount: consultationCharge,
           status: BookingStatus.confirmed,
+          sessionType, // Save manual/automatic type
         },
       });
 
@@ -163,7 +165,7 @@ export class BookingsService {
           bookingId: booking.id,
           date: new Date(scheduledAt),
           status: 'pending',
-          sessionType: type,
+          sessionType,
         },
       });
 
@@ -290,94 +292,51 @@ export class BookingsService {
 
   // Find a doctor available at a given scheduledAt datetime
   async assignAvailableDoctor(scheduledAt: Date): Promise<string> {
-    // Find a doctor without a conflicting booking or unavailability
-    const scheduledStart = dayjs(scheduledAt);
-    const scheduledEnd = scheduledStart.add(30, 'minute'); // assume 30 min session
+    const scheduledStart = dayjs(scheduledAt).utc();
+    const scheduledEnd = scheduledStart.add(30, 'minute');
+    const dayOfWeek = scheduledStart.day(); // Sunday = 0
 
-    const availableDoctor = await this.prisma.user.findFirst({
+    const doctors = await this.prisma.user.findMany({
       where: {
-        role: {
-          name: 'doctor', // filter by role name
-        },
-        // No booking conflicts at scheduledAt
+        role: { name: 'doctor' },
         bookingsAsDoctor: {
           none: {
             scheduledAt: {
               gte: scheduledStart.toDate(),
               lt: scheduledEnd.toDate(),
             },
-            status: { in: [BookingStatus.confirmed, BookingStatus.pending] },
+            status: { in: ['pending', 'confirmed'] },
           },
         },
-        // No unavailability conflicts
         doctorUnavailabilities: {
           none: {
-            AND: [
-              { startTime: { lte: scheduledStart.toDate() } },
-              { endTime: { gt: scheduledStart.toDate() } },
-            ],
+            startTime: { lte: scheduledStart.toDate() },
+            endTime: { gt: scheduledStart.toDate() },
+          },
+        },
+        timeslots: {
+          some: {
+            dayOfWeek,
+            isRecurring: true,
+            startTime: {
+              lte: scheduledStart.toDate(),
+            },
+            endTime: {
+              gte: scheduledEnd.toDate(),
+            },
           },
         },
       },
+      take: 1,
     });
+
+    const availableDoctor = doctors[0];
 
     if (!availableDoctor) {
       throw new BadRequestException('No doctors available at this time slot');
     }
 
     return availableDoctor.id;
-  }
-
-  // Get available time slots for doctor on a given date
-
-  async getAvailableSlots(dto: GetTimeSlotsDto) {
-    const { doctorId, date } = dto;
-
-    const dayStart = new Date(date);
-    dayStart.setHours(8, 0, 0, 0); // 8:00 AM
-
-    const dayEnd = new Date(date);
-    dayEnd.setHours(18, 0, 0, 0); // 6:00 PM
-
-    const [unavailabilities, bookings] = await Promise.all([
-      this.prisma.doctorUnavailability.findMany({
-        where: {
-          doctorId,
-          date: new Date(date),
-        },
-        select: { startTime: true, endTime: true },
-      }),
-      this.prisma.booking.findMany({
-        where: {
-          doctorId,
-          scheduledAt: {
-            gte: dayStart,
-            lt: dayEnd,
-          },
-          status: {
-            notIn: ['cancelled', 'missed'],
-          },
-        },
-        select: { scheduledAt: true },
-      }),
-    ]);
-
-    const results: { time: string; available: boolean }[] = [];
-    const slotTime = new Date(dayStart);
-
-    while (slotTime < dayEnd) {
-      const slotCopy = new Date(slotTime); // Avoid mutation
-      const available = isSlotAvailable(slotCopy, unavailabilities, bookings);
-
-      results.push({
-        time: slotCopy.toISOString(),
-        available,
-      });
-
-      slotTime.setTime(slotTime.getTime() + SESSION_DURATION_MS);
-    }
-
-    return results;
   }
 
   // Mark doctor unavailable by adding DoctorUnavailability record for that time slot
@@ -412,7 +371,7 @@ export class BookingsService {
         bookingId: booking.id,
         date: booking.scheduledAt,
         status: SessionStatusEnum.pending,
-        sessionType: booking.type,
+        sessionType: booking.sessionType,
       },
     });
   }

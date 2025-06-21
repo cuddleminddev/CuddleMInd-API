@@ -98,21 +98,7 @@ export class BookingsController {
     const doctorId = (req.user as any).id;
     const data =
       await this.bookingsService.getUpcomingBookingsForDoctor(doctorId);
-    return this.responseService.successResponse(
-      'upcoming bookings list',
-      data,
-    );
-  }
-
-  @Get('/timeslots')
-  @Public()
-  @ApiOperation({ summary: 'List available time slots for a doctor on a date' })
-  async getAvailableTimeSlots(@Query() dto: GetTimeSlotsDto) {
-    const timeslots = await this.bookingsService.getAvailableSlots(dto);
-    return this.responseService.successResponse(
-      'Available timeslots listed',
-      timeslots,
-    );
+    return this.responseService.successResponse('upcoming bookings list', data);
   }
 
   @Get(':id')
