@@ -112,7 +112,8 @@ export class ChatGateway
         scheduledAt: new Date(),
         durationMinutes: 60,
         paymentType: 'one_time',
-        type: 'video',
+        sessionType: 'video',
+        type: 'instant',
       };
 
       console.log(
