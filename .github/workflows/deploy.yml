@@ -31,11 +31,26 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
             cd /var/www/CuddleMInd-API
-            git pull origin main
+            echo "🚀 Pulling latest code from main..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "📦 Installing dependencies..."
             npm ci --legacy-peer-deps
+
+            echo "🧱 Running Prisma migrations..."
             npx prisma migrate deploy || echo "Migration failed or not needed"
+
+            echo "🔧 Generating Prisma client..."
             npx prisma generate
-            npm run build || echo "Build script missing!"
+
+            echo "🏗️ Building project..."
+            npm run build || echo "⚠️ Build failed or script missing!"
+
+            echo "🌱 Seeding database..."
             npm run prisma:seed
+
+            echo "🚦 Restarting app with PM2..."
             pm2 restart cuddlemind-api
