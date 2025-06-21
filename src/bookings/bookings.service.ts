@@ -371,7 +371,7 @@ export class BookingsService {
         bookingId: booking.id,
         date: booking.scheduledAt,
         status: SessionStatusEnum.pending,
-        sessionType: booking.sessionType,
+        sessionType: booking.sessionType, 
       },
     });
   }
