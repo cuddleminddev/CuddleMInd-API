@@ -152,6 +152,9 @@ export class BookingsService {
           status: BookingStatus.confirmed,
           sessionType,
         },
+        include: {
+          doctor:true
+        }
       });
 
       await this.prisma.userPlan.update({
