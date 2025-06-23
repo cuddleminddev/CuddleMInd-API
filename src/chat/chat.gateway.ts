@@ -29,6 +29,7 @@ export class ChatGateway
   constructor(
     private readonly chatService: ChatService,
     private readonly bookingService: BookingsService,
+    private prisma: PrismaService,
   ) {}
 
   afterInit() {
@@ -184,6 +185,54 @@ export class ChatGateway
         });
       }
     }
+  }
+
+  @SubscribeMessage('send_doctor_info')
+  async handleSendConsultantInfo(
+    @MessageBody()
+    payload: {
+      sessionId: string;
+      patientId: string;
+      doctorId: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const { sessionId, patientId, doctorId } = payload;
+
+    const patientSocket = this.patients.get(patientId);
+    if (!patientSocket) {
+      console.error('❌ Patient socket not found:', patientId);
+      client.emit('consultant_info_error', {
+        sessionId,
+        message: 'Patient is not connected',
+      });
+      return;
+    }
+
+    // ✅ Fetch doctor's name from DB
+    const doctor = await this.prisma.user.findUnique({
+      where: { id: doctorId },
+      select: { name: true },
+    });
+
+    if (!doctor) {
+      console.error('❌ Doctor not found:', doctorId);
+      client.emit('consultant_info_error', {
+        sessionId,
+        message: 'Doctor not found',
+      });
+      return;
+    }
+
+    const emitPayload = {
+      sessionId,
+      doctorId,
+      name: doctor.name, 
+    };
+
+    patientSocket.emit('receive_consultant_info', emitPayload);
+
+    console.log(`✅ Sent doctor info to patient ${patientId}:`, emitPayload);
   }
 
   @SubscribeMessage('accept_chat')
