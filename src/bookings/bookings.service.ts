@@ -100,6 +100,7 @@ export class BookingsService {
           status: BookingStatus.pending,
           sessionType,
         },
+        include: { doctor: true },
       });
 
       console.log('📘 Booking created:', booking);
@@ -153,7 +154,14 @@ export class BookingsService {
           sessionType,
         },
         include: {
-          doctor: true,
+          doctor: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              // add more doctor fields as needed
+            },
+          },
         },
       });
 
