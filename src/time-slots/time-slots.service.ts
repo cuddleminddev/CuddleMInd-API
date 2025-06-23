@@ -9,7 +9,7 @@ import {
   isBefore,
   set,
 } from 'date-fns';
-import { zonedTimeToUtc } from 'date-fns-tz';
+import { zonedTimeToUtc, format } from 'date-fns-tz';
 import { CreateWeeklyScheduleDto } from './dto/create-time-slot.dto';
 
 @Injectable()
@@ -182,5 +182,64 @@ export class TimeSlotsService {
     }
 
     return { message: 'Weekly schedule set successfully', timeslots: created };
+  }
+
+  async getWeeklySchedule(doctorId: string) {
+    const timeslots = await this.prisma.timeslot.findMany({
+      where: {
+        doctorId,
+        isRecurring: true,
+      },
+      orderBy: {
+        dayOfWeek: 'asc',
+      },
+    });
+
+    if (!timeslots.length) {
+      return {
+        message: 'No recurring timeslots found for this doctor',
+        weeklySchedule: [],
+      };
+    }
+
+    //  const timezone = timeslots[0].timezone;
+
+    const groupedByDay: Record<
+      number,
+      { startTime: string; endTime: string }[]
+    > = {};
+
+    for (const slot of timeslots) {
+      const startStr =
+        slot.startTime.getUTCHours().toString().padStart(2, '0') +
+        ':' +
+        slot.startTime.getUTCMinutes().toString().padStart(2, '0');
+
+      const endStr =
+        slot.endTime.getUTCHours().toString().padStart(2, '0') +
+        ':' +
+        slot.endTime.getUTCMinutes().toString().padStart(2, '0');
+      if (!groupedByDay[slot.dayOfWeek]) {
+        groupedByDay[slot.dayOfWeek] = [];
+      }
+
+      groupedByDay[slot.dayOfWeek].push({
+        startTime: startStr,
+        endTime: endStr,
+      });
+    }
+
+    const weeklySchedule = Object.entries(groupedByDay).map(
+      ([day, timeRanges]) => ({
+        dayOfWeek: Number(day),
+        timeRanges,
+      }),
+    );
+
+    return {
+      doctorId,
+      //  timezone, // still included for display
+      weeklySchedule,
+    };
   }
 }

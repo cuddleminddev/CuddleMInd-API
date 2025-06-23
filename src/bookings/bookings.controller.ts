@@ -12,6 +12,7 @@ import {
   UseGuards,
   Req,
   ForbiddenException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -87,6 +88,21 @@ export class BookingsController {
     return this.responseService.successResponse(
       'Bookings retrieved successfully',
       bookings,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('next')
+  async getNextBooking(@Req() req: Request) {
+    const user = req.user as { id: string; role: string };
+    console.log(user);
+    if (!user || !user.id || !['doctor', 'client'].includes(user.role)) {
+      throw new UnauthorizedException('User role not permitted or invalid');
+    }
+
+    return this.bookingsService.getNextBooking(
+      user.id,
+      user.role as 'doctor' | 'client',
     );
   }
 

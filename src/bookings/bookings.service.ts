@@ -415,6 +415,30 @@ export class BookingsService {
     });
   }
 
+  async getNextBooking(userId: string, role: 'doctor' | 'client') {
+    const whereClause =
+      role === 'doctor' ? { doctorId: userId } : { patientId: userId };
+
+    const booking = await this.prisma.booking.findFirst({
+      where: {
+        ...whereClause,
+        scheduledAt: { gte: new Date() },
+        status: { in: ['confirmed'] },
+      },
+      orderBy: { scheduledAt: 'asc' },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('No upcoming bookings found');
+    }
+
+    return {
+      status: true,
+      message: 'Next booking fetched',
+      data: booking,
+    };
+  }
+
   async getUpcomingBookingsForDoctor(doctorId: string) {
     return this.prisma.booking.findMany({
       where: {
@@ -422,7 +446,20 @@ export class BookingsService {
         status: 'confirmed',
         scheduledAt: { gt: new Date() },
       },
-      include: {
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        amount: true,
+        createdAt: true,
+        updatedAt: true,
+        scheduledAt: true,
+        isPaid: true,
+        paymentType: true,
+        sessionType: true,
+        patientId: true,
+        doctorId: true,
+        userPlanId: true,
         patient: {
           select: {
             id: true,
@@ -431,7 +468,16 @@ export class BookingsService {
             phone: true,
           },
         },
-        consultationSession: true,
+        consultationSession: {
+          select: {
+            id: true,
+            status: true,
+            date: true,
+            startedAt: true,
+            endedAt: true,
+            notes: true,
+          },
+        },
       },
       orderBy: {
         scheduledAt: 'asc',

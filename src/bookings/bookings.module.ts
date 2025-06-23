@@ -7,6 +7,7 @@ import { UsersModule } from 'src/users/users.module';
 import { PaymentsModule } from 'src/payments/payments.module';
 import { StripeModule } from 'src/stripe/stripe.module';
 import { PlansModule } from 'src/plans/plans.module';
+import { BookingCleanupService } from './booking-cleanup.service';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { PlansModule } from 'src/plans/plans.module';
     PlansModule,
   ],
   controllers: [BookingsController],
-  providers: [BookingsService],
+  providers: [BookingsService, BookingCleanupService],
   exports: [BookingsService],
 })
 export class BookingsModule {}

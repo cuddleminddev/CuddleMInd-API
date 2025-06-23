@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { TimeSlotsService } from './time-slots.service';
 import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
@@ -29,6 +30,12 @@ export class TimeSlotsController {
   @Get()
   findAll() {
     return this.timeSlotsService.findAll();
+  }
+
+  @Get('weekly')
+  async getDoctorWeeklySchedule(@Query('doctorId') doctorId: string) {
+    if (!doctorId) throw new BadRequestException('doctorId is required');
+    return this.timeSlotsService.getWeeklySchedule(doctorId);
   }
 
   @Get('available')
