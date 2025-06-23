@@ -7,5 +7,6 @@ import { BookingsModule } from 'src/bookings/bookings.module';
 @Module({
   imports: [BookingsModule],
   providers: [ChatGateway, ChatService, PrismaService],
+  exports: [ChatGateway],
 })
 export class ChatModule {}

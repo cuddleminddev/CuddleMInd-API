@@ -25,6 +25,7 @@ export class ChatGateway
 
   private consultants: Map<string, Socket> = new Map();
   private patients: Map<string, Socket> = new Map();
+  private doctors: Map<string, Socket> = new Map();
 
   constructor(
     private readonly chatService: ChatService,
@@ -48,6 +49,8 @@ export class ChatGateway
 
     if (role === 'consultant') {
       this.consultants.set(userId, client);
+    } else if (role === 'doctor') {
+      this.doctors.set(userId, client); // New map for regular doctors
     } else if (role === 'patient') {
       this.patients.set(userId, client);
     }
@@ -227,7 +230,7 @@ export class ChatGateway
     const emitPayload = {
       sessionId,
       doctorId,
-      name: doctor.name, 
+      name: doctor.name,
     };
 
     patientSocket.emit('receive_consultant_info', emitPayload);
@@ -308,5 +311,15 @@ export class ChatGateway
   ) {
     client.join(sessionId);
     console.log(`Client ${client.id} joined session ${sessionId}`);
+  }
+
+  notifyDoctorOfInstantSession(doctorId: string, payload: any) {
+    const doctorSocket = this.doctors.get(doctorId);
+    if (doctorSocket) {
+      doctorSocket.emit('instant_session_started', payload);
+      console.log(`🔔 Notified doctor ${doctorId} of instant session`);
+    } else {
+      console.warn(`⚠️ Doctor ${doctorId} not connected via WebSocket`);
+    }
   }
 }
