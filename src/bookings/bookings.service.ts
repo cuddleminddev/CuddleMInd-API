@@ -59,7 +59,6 @@ export class BookingsService {
   // Create booking with plan or one-time payment
   async create(dto: CreateBookingDto, clientId: string) {
     const { type, scheduledAt, doctorId, paymentType, sessionType } = dto;
-
     const patientId = clientId;
 
     if (!scheduledAt || !dayjs(scheduledAt).isValid()) {
@@ -94,9 +93,10 @@ export class BookingsService {
       sessionType,
     );
 
-    // One-time payment
+    let booking: Booking;
+
     if (paymentType === PaymentType.one_time) {
-      const booking = await this.prisma.booking.create({
+      booking = await this.prisma.booking.create({
         data: {
           doctorId: assignedDoctorId,
           patientId,
@@ -107,7 +107,7 @@ export class BookingsService {
           userPlanId: null,
           amount: consultationCharge,
           status: BookingStatus.pending,
-          sessionType, // Save manual/automatic type
+          sessionType,
         },
       });
 
@@ -122,6 +122,9 @@ export class BookingsService {
         },
       );
 
+      // 🔥 Mark unavailable for one-time
+      await this.markDoctorUnavailable(assignedDoctorId, new Date(scheduledAt));
+
       return {
         booking,
         paymentIntent,
@@ -129,7 +132,6 @@ export class BookingsService {
       };
     }
 
-    // Plan payment
     if (paymentType === PaymentType.plan) {
       const selectedPlan = activePlans.find((p) => p.bookingsPending > 0);
 
@@ -137,7 +139,7 @@ export class BookingsService {
         throw new BadRequestException('Plan usage limit reached');
       }
 
-      const booking = await this.prisma.booking.create({
+      booking = await this.prisma.booking.create({
         data: {
           doctorId: assignedDoctorId,
           patientId,
@@ -148,7 +150,7 @@ export class BookingsService {
           userPlanId: selectedPlan.id,
           amount: consultationCharge,
           status: BookingStatus.confirmed,
-          sessionType, // Save manual/automatic type
+          sessionType,
         },
       });
 
@@ -157,6 +159,7 @@ export class BookingsService {
         data: { bookingsPending: { decrement: 1 } },
       });
 
+      // 🔥 Mark unavailable for plan
       await this.markDoctorUnavailable(assignedDoctorId, new Date(scheduledAt));
 
       // Create consultation session
@@ -296,9 +299,18 @@ export class BookingsService {
     const scheduledEnd = scheduledStart.add(30, 'minute');
     const dayOfWeek = scheduledStart.day(); // Sunday = 0
 
+    // Extract time part as dummy date for matching time-only values
+    const scheduledTimeStart = new Date(
+      Date.UTC(1970, 0, 1, scheduledStart.hour(), scheduledStart.minute()),
+    );
+    const scheduledTimeEnd = new Date(
+      Date.UTC(1970, 0, 1, scheduledEnd.hour(), scheduledEnd.minute()),
+    );
+
     const doctors = await this.prisma.user.findMany({
       where: {
         role: { name: 'doctor' },
+
         bookingsAsDoctor: {
           none: {
             scheduledAt: {
@@ -308,21 +320,24 @@ export class BookingsService {
             status: { in: ['pending', 'confirmed'] },
           },
         },
+
         doctorUnavailabilities: {
           none: {
             startTime: { lte: scheduledStart.toDate() },
             endTime: { gt: scheduledStart.toDate() },
           },
         },
+
         timeslots: {
           some: {
             dayOfWeek,
             isRecurring: true,
+
             startTime: {
-              lte: scheduledStart.toDate(),
+              lte: scheduledTimeStart,
             },
             endTime: {
-              gte: scheduledEnd.toDate(),
+              gte: scheduledTimeEnd,
             },
           },
         },
@@ -371,7 +386,7 @@ export class BookingsService {
         bookingId: booking.id,
         date: booking.scheduledAt,
         status: SessionStatusEnum.pending,
-        sessionType: booking.sessionType, 
+        sessionType: booking.sessionType,
       },
     });
   }

@@ -197,15 +197,20 @@ model Booking {
 }
 
 model ConsultationSession {
-  id          String            @id @default(uuid()) @map("id")
-  bookingId   String            @unique @map("booking_id")
-  date        DateTime          @map("date")
-  status      SessionStatusEnum @map("status")
-  startedAt   DateTime?         @map("started_at")
-  endedAt     DateTime?         @map("ended_at")
-  sessionType SessionType       @map("session_type")
-  notes       String?           @map("notes")
-  createdAt   DateTime          @default(now()) @map("created_at")
+  id                String            @id @default(uuid()) @map("id")
+  bookingId         String            @unique @map("booking_id")
+  date              DateTime          @map("date")
+  status            SessionStatusEnum @map("status")
+  startedAt         DateTime?         @map("started_at")
+  endedAt           DateTime?         @map("ended_at")
+  sessionType       SessionType       @map("session_type")
+  notes             String?           @map("notes")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  durationInMinutes Int?
+  sessionToken      String?
+  zegocloudRoomId   String?
+  createdBy         String?
+  endedBy           String?
 
   booking Booking @relation("BookingToSession", fields: [bookingId], references: [id])
 
@@ -260,7 +265,7 @@ model Timeslot {
   dayOfWeek   Int      @map("day_of_week")
   startTime   DateTime @map("start_time")
   endTime     DateTime @map("end_time")
-  timezone    String   @map("timezone")
+  timezone    String?   @map("timezone")
   isRecurring Boolean  @map("is_recurring")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
