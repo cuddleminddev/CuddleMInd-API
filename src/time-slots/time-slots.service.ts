@@ -66,7 +66,9 @@ export class TimeSlotsService {
     }
 
     const [timeslots, bookings, unavailabilities] = await Promise.all([
-      this.prisma.timeslot.findMany({ where: timeslotWhere }),
+      this.prisma.timeslot.findMany({
+        where: { ...timeslotWhere, doctor: { status: 'active' } },
+      }),
       this.prisma.booking.findMany({ where: bookingWhere }),
       this.prisma.doctorUnavailability.findMany({ where: unavailabilityWhere }),
     ]);
