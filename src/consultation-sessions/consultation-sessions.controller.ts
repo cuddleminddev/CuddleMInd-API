@@ -1,34 +1,59 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+} from '@nestjs/common';
 import { ConsultationSessionsService } from './consultation-sessions.service';
-import { CreateConsultationSessionDto } from './dto/create-consultation-session.dto';
+import {
+  ConnectConsultationDto,
+  CreateConsultationSessionDto,
+  EndConsultationDto,
+  StartConsultationDto,
+} from './dto/create-consultation-session.dto';
 import { UpdateConsultationSessionDto } from './dto/update-consultation-session.dto';
+import { ResponseService } from 'src/response/response.service';
 
 @Controller('consultation-sessions')
 export class ConsultationSessionsController {
-  constructor(private readonly consultationSessionsService: ConsultationSessionsService) {}
+  constructor(
+    private readonly consultationSessionsService: ConsultationSessionsService,
+    private readonly responseService: ResponseService,
+  ) {}
 
-  @Post()
-  create(@Body() createConsultationSessionDto: CreateConsultationSessionDto) {
-    return this.consultationSessionsService.create(createConsultationSessionDto);
+  @Post('start')
+  async start(@Body() dto: StartConsultationDto) {
+    const session = await this.consultationSessionsService.startSession(
+      dto.bookingId,
+      dto.createdBy,
+    );
+    return this.responseService.successResponse(
+      'session created Sucessfully',
+      session,
+    );
   }
 
-  @Get()
-  findAll() {
-    return this.consultationSessionsService.findAll();
+  @Post('connect')
+  async connect(@Body() dto: ConnectConsultationDto) {
+    const response = await this.consultationSessionsService.connectSession(
+      dto.bookingId,
+    );
+    return this.responseService.successResponse(
+      'sucessfully connected',
+      response,
+    );
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.consultationSessionsService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateConsultationSessionDto: UpdateConsultationSessionDto) {
-    return this.consultationSessionsService.update(+id, updateConsultationSessionDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.consultationSessionsService.remove(+id);
+  @Post('end')
+  async end(@Body() dto: EndConsultationDto) {
+    const resposne = await this.consultationSessionsService.endSession(
+      dto.bookingId,
+      dto.endedBy,
+      dto.notes,
+    );
+    return this.responseService.successResponse('sucessfully ended', resposne);
   }
 }
