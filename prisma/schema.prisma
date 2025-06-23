@@ -34,6 +34,7 @@ enum BookingStatus {
   completed
   cancelled
   missed
+  failed
 }
 
 enum TransactionStatus {
@@ -265,7 +266,7 @@ model Timeslot {
   dayOfWeek   Int      @map("day_of_week")
   startTime   DateTime @map("start_time")
   endTime     DateTime @map("end_time")
-  timezone    String?   @map("timezone")
+  timezone    String?  @map("timezone")
   isRecurring Boolean  @map("is_recurring")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")

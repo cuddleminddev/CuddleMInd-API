@@ -14,6 +14,7 @@ import { StripeModule } from './stripe/stripe.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ConsultationSessionsModule } from './consultation-sessions/consultation-sessions.module';
 import { TimeSlotsModule } from './time-slots/time-slots.module';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { TimeSlotsModule } from './time-slots/time-slots.module';
       isGlobal: true,
       envFilePath: `.env${process.env.NODE_ENV === 'test' ? '.test' : ''}`,
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     UsersModule,
