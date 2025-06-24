@@ -9,7 +9,7 @@ import {
   isBefore,
   set,
 } from 'date-fns';
-import { zonedTimeToUtc, format } from 'date-fns-tz';
+import { zonedTimeToUtc, format, utcToZonedTime } from 'date-fns-tz';
 import { CreateWeeklyScheduleDto } from './dto/create-time-slot.dto';
 
 @Injectable()
@@ -202,7 +202,7 @@ export class TimeSlotsService {
       };
     }
 
-    //  const timezone = timeslots[0].timezone;
+    const timezone = timeslots[0].timezone;
 
     const groupedByDay: Record<
       number,
@@ -210,15 +210,12 @@ export class TimeSlotsService {
     > = {};
 
     for (const slot of timeslots) {
-      const startStr =
-        slot.startTime.getUTCHours().toString().padStart(2, '0') +
-        ':' +
-        slot.startTime.getUTCMinutes().toString().padStart(2, '0');
+      const startZoned = utcToZonedTime(slot.startTime, timezone);
+      const endZoned = utcToZonedTime(slot.endTime, timezone);
 
-      const endStr =
-        slot.endTime.getUTCHours().toString().padStart(2, '0') +
-        ':' +
-        slot.endTime.getUTCMinutes().toString().padStart(2, '0');
+      const startStr = format(startZoned, 'HH:mm', { timeZone: timezone });
+      const endStr = format(endZoned, 'HH:mm', { timeZone: timezone });
+
       if (!groupedByDay[slot.dayOfWeek]) {
         groupedByDay[slot.dayOfWeek] = [];
       }
@@ -238,7 +235,7 @@ export class TimeSlotsService {
 
     return {
       doctorId,
-      //  timezone, // still included for display
+      timezone,
       weeklySchedule,
     };
   }
