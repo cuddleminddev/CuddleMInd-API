@@ -95,7 +95,7 @@ export class AnalyticsService {
     const [bookings, users, chats] = await Promise.all([
       this.prisma.booking.count({
         where: {
-          status:{in:['confirmed','completed']},
+          status: { in: ['confirmed', 'completed'] },
           createdAt: dateFilter,
         },
       }),
@@ -112,13 +112,7 @@ export class AnalyticsService {
 
     return {
       labels: ['Bookings', 'Users', 'Chats'],
-      datasets: [
-        {
-          label: 'System Distribution',
-          data: [bookings, users, chats],
-          backgroundColor: ['#36A2EB', '#FFCE56', '#FF6384'],
-        },
-      ],
+      values: [bookings, users, chats],
     };
   }
 
@@ -139,29 +133,28 @@ export class AnalyticsService {
       },
     });
 
-    // Group bookings by date and type
+    const allTypes = ['normal', 'instant', 'special', 'rebooking'];
     const dailyMap: Record<string, Record<string, number>> = {};
 
     for (const booking of bookings) {
       const dateKey = booking.scheduledAt.toISOString().split('T')[0];
-      if (!dailyMap[dateKey]) dailyMap[dateKey] = {};
-      if (!dailyMap[dateKey][booking.type]) dailyMap[dateKey][booking.type] = 0;
-
+      if (!dailyMap[dateKey]) {
+        dailyMap[dateKey] = Object.fromEntries(
+          allTypes.map((type) => [type, 0]),
+        );
+      }
       dailyMap[dateKey][booking.type]++;
     }
 
-    const allDates = Object.keys(dailyMap).sort();
-    const allTypes = ['normal', 'instant', 'special', 'rebooking'];
+    const labels = Object.keys(dailyMap).sort();
 
-    const datasets = allTypes.map((type, index) => ({
+    const datasets = allTypes.map((type) => ({
       label: type,
-      data: allDates.map((date) => dailyMap[date]?.[type] || 0),
-      borderColor: ['#36A2EB', '#FF6384', '#4BC0C0', '#9966FF'][index],
-      fill: false,
+      data: labels.map((date) => dailyMap[date]?.[type] || 0),
     }));
 
     return {
-      labels: allDates,
+      labels,
       datasets,
     };
   }
