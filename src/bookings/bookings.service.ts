@@ -425,6 +425,10 @@ export class BookingsService {
         scheduledAt: { gte: new Date() },
         status: { in: ['confirmed'] },
       },
+      include: {
+        doctor: true,
+        patient: true,
+      },
       orderBy: { scheduledAt: 'asc' },
     });
 
