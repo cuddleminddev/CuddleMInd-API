@@ -1,4 +1,13 @@
-import { Controller, Post, Body, UseGuards, Get, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Get,
+  Req,
+  Res,
+  HttpStatus,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Request } from 'express';
@@ -7,6 +16,7 @@ import { RegisterDto } from './dto/register.dto';
 import { EmailDto } from './dto/email.dto';
 import { OtpVerifyDto } from './dto/otp-verify.dto';
 import { ResponseService } from 'src/response/response.service';
+import { Response } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -25,9 +35,20 @@ export class AuthController {
   }
 
   @Post('login')
-  async login(@Body() data: LoginDto) {
-    const resposne = await this.authService.login(data.email, data.password);
-    return this.responseService.successResponse('login Sucessfull', resposne);
+  async login(@Body() data: LoginDto, @Res() res: Response) {
+    try {
+      const response = await this.authService.login(data.email, data.password);
+      return res.status(HttpStatus.OK).json({
+        status: true,
+        message: 'Login successful',
+        data: response,
+      });
+    } catch (err) {
+      return res.status(HttpStatus.UNAUTHORIZED).json({
+        status: false,
+        message: err.message || 'Invalid Credentials',
+      });
+    }
   }
 
   @Get('profile')
