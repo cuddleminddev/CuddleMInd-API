@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { eachDayOfInterval, format } from 'date-fns';
 
 function getDateFilter(startDate?: Date, endDate?: Date) {
   if (!startDate && !endDate) return undefined;
@@ -119,7 +120,7 @@ export class AnalyticsService {
   async getBookingLineChartByType(startDate?: Date, endDate?: Date) {
     const whereClause: any = {};
     if (startDate && endDate) {
-      whereClause.scheduledAt = {
+      whereClause.createdAt = {
         gte: startDate,
         lte: endDate,
       };
@@ -128,7 +129,7 @@ export class AnalyticsService {
     const bookings = await this.prisma.booking.findMany({
       where: whereClause,
       select: {
-        scheduledAt: true,
+        createdAt: true,
         type: true,
       },
     });
@@ -136,25 +137,30 @@ export class AnalyticsService {
     const allTypes = ['normal', 'instant', 'special', 'rebooking'];
     const dailyMap: Record<string, Record<string, number>> = {};
 
+    // Aggregate booking counts by date and type
     for (const booking of bookings) {
-      const dateKey = booking.scheduledAt.toISOString().split('T')[0];
+      const dateKey = format(booking.createdAt, 'yyyy-MM-dd');
       if (!dailyMap[dateKey]) {
-        dailyMap[dateKey] = Object.fromEntries(
-          allTypes.map((type) => [type, 0]),
-        );
+        dailyMap[dateKey] = Object.fromEntries(allTypes.map((t) => [t, 0]));
       }
       dailyMap[dateKey][booking.type]++;
     }
 
-    const labels = Object.keys(dailyMap).sort();
+    // Generate a list of all dates between start and end
+    const fullDateRange =
+      startDate && endDate
+        ? eachDayOfInterval({ start: startDate, end: endDate }).map((d) =>
+            format(d, 'yyyy-MM-dd'),
+          )
+        : Object.keys(dailyMap).sort(); // fallback to only available dates
 
     const datasets = allTypes.map((type) => ({
       label: type,
-      data: labels.map((date) => dailyMap[date]?.[type] || 0),
+      data: fullDateRange.map((date) => dailyMap[date]?.[type] || 0),
     }));
 
     return {
-      labels,
+      labels: fullDateRange,
       datasets,
     };
   }
