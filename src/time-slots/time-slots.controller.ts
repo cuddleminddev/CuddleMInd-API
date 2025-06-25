@@ -9,6 +9,7 @@ import {
   Query,
   BadRequestException,
   UseGuards,
+  HttpStatus,
 } from '@nestjs/common';
 import { TimeSlotsService } from './time-slots.service';
 import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
@@ -26,51 +27,123 @@ export class TimeSlotsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('schedule')
-  setWeeklySchedule(@Body() dto: CreateWeeklyScheduleDto) {
-    return this.timeSlotsService.setWeeklySchedule(dto);
+  async setWeeklySchedule(@Body() dto: CreateWeeklyScheduleDto) {
+    try {
+      const result = await this.timeSlotsService.setWeeklySchedule(dto);
+      return this.responseService.successResponse(
+        'Weekly schedule saved successfully',
+        result,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Get()
-  findAll() {
-    return this.timeSlotsService.findAll();
+  async findAll() {
+    try {
+      const result = await this.timeSlotsService.findAll();
+      return this.responseService.successResponse(
+        'Time slots retrieved successfully',
+        result,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error.message,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('weekly')
   async getDoctorWeeklySchedule(@Query('doctorId') doctorId: string) {
-    if (!doctorId) throw new BadRequestException('doctorId is required');
-    return this.timeSlotsService.getWeeklySchedule(doctorId);
+    if (!doctorId) {
+      return this.responseService.errorResponse(
+        'doctorId is required',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      const result = await this.timeSlotsService.getWeeklySchedule(doctorId);
+      return this.responseService.successResponse(
+        'Doctor weekly schedule retrieved',
+        result,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('available')
   async getAvailableTimeslots(@Query() query: GetAvailableTimeslotsDto) {
-    const timeslots = await this.timeSlotsService.getAvailableTimeslots(
-      query.date,
-      query.doctorId,
-    );
-
-    return this.responseService.successResponse(
-      'Available timeslots listed',
-      timeslots,
-    );
+    try {
+      const timeslots = await this.timeSlotsService.getAvailableTimeslots(
+        query.date,
+        query.doctorId,
+      );
+      return this.responseService.successResponse(
+        'Available timeslots listed',
+        timeslots,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.timeSlotsService.findOne(+id);
+  async findOne(@Param('id') id: string) {
+    try {
+      const result = await this.timeSlotsService.findOne(+id);
+      return this.responseService.successResponse(
+        'Time slot retrieved',
+        result,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error.message,
+        HttpStatus.NOT_FOUND,
+      );
+    }
   }
 
   @Patch(':id')
-  update(
+  async update(
     @Param('id') id: string,
     @Body() updateTimeSlotDto: UpdateTimeSlotDto,
   ) {
-    return this.timeSlotsService.update(+id, updateTimeSlotDto);
+    try {
+      const result = await this.timeSlotsService.update(+id, updateTimeSlotDto);
+      return this.responseService.successResponse('Time slot updated', result);
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.timeSlotsService.remove(+id);
+  async remove(@Param('id') id: string) {
+    try {
+      const result = await this.timeSlotsService.remove(+id);
+      return this.responseService.successResponse('Time slot deleted', result);
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error.message,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 }

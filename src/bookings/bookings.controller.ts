@@ -1,5 +1,3 @@
-// src/bookings/bookings.controller.ts
-
 import {
   Controller,
   Get,
@@ -11,8 +9,7 @@ import {
   Query,
   UseGuards,
   Req,
-  ForbiddenException,
-  UnauthorizedException,
+  HttpStatus,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -24,12 +21,8 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ResponseService } from 'src/response/response.service';
-import { GetTimeSlotsDto } from './dto/get-time-slots.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { Public } from 'src/auth/decorators/public.decorator';
 import { Request } from 'express';
-import { UsersService } from 'src/users/users.service';
-import { PlansService } from 'src/plans/plans.service';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 
@@ -55,16 +48,19 @@ export class BookingsController {
     @Body() createBookingDto: CreateBookingDto,
     @Req() req: Request,
   ) {
-    const clientId = (req.user as any).id;
-
-    const result = await this.bookingsService.create(
-      createBookingDto,
-      clientId,
-    );
-    return this.responseService.successResponse(
-      'Booking processed successfully.',
-      result,
-    );
+    try {
+      const clientId = (req.user as any).id;
+      const result = await this.bookingsService.create(
+        createBookingDto,
+        clientId,
+      );
+      return this.responseService.successResponse(
+        'Booking processed successfully.',
+        result,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Get()
@@ -79,53 +75,78 @@ export class BookingsController {
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
   ) {
-    const bookings = await this.bookingsService.findAll({
-      patientId,
-      doctorId,
-      fromDate,
-      toDate,
-    });
-    return this.responseService.successResponse(
-      'Bookings retrieved successfully',
-      bookings,
-    );
+    try {
+      const bookings = await this.bookingsService.findAll({
+        patientId,
+        doctorId,
+        fromDate,
+        toDate,
+      });
+      return this.responseService.successResponse(
+        'Bookings retrieved successfully',
+        bookings,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get('next')
   async getNextBooking(@Req() req: Request) {
-    const user = req.user as { id: string; role: string };
-    console.log(user);
-    if (!user || !user.id || !['doctor', 'client'].includes(user.role)) {
-      throw new UnauthorizedException('User role not permitted or invalid');
-    }
+    try {
+      const user = req.user as { id: string; role: string };
 
-    return this.bookingsService.getNextBooking(
-      user.id,
-      user.role as 'doctor' | 'client',
-    );
+      if (!user || !user.id || !['doctor', 'client'].includes(user.role)) {
+        return this.responseService.errorResponse(
+          'User role not permitted or invalid',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+
+      const result = await this.bookingsService.getNextBooking(
+        user.id,
+        user.role as 'doctor' | 'client',
+      );
+      return this.responseService.successResponse(
+        'Next booking fetched',
+        result,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 
   @UseGuards(RolesGuard)
   @Roles('doctor')
   @Get('doctor/upcoming')
-  @ApiOperation({ summary: 'List Upcomming Bookings for  Doctors' })
+  @ApiOperation({ summary: 'List upcoming bookings for doctors' })
   async getDoctorUpcomingBookings(@Req() req: Request) {
-    const doctorId = (req.user as any).id;
-    const data =
-      await this.bookingsService.getUpcomingBookingsForDoctor(doctorId);
-    return this.responseService.successResponse('upcoming bookings list', data);
+    try {
+      const doctorId = (req.user as any).id;
+      const data =
+        await this.bookingsService.getUpcomingBookingsForDoctor(doctorId);
+      return this.responseService.successResponse(
+        'Upcoming bookings list',
+        data,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve a booking by ID' })
   @ApiResponse({ status: 200, description: 'Booking retrieved successfully.' })
   async getBookingById(@Param('id') id: string) {
-    const booking = await this.bookingsService.findOne(id);
-    return this.responseService.successResponse(
-      'Booking retrieved successfully',
-      booking,
-    );
+    try {
+      const booking = await this.bookingsService.findOne(id);
+      return this.responseService.successResponse(
+        'Booking retrieved successfully',
+        booking,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.NOT_FOUND);
+    }
   }
 
   @Patch(':id')
@@ -135,21 +156,29 @@ export class BookingsController {
     @Param('id') id: string,
     @Body() updateBookingDto: UpdateBookingDto,
   ) {
-    const updated = await this.bookingsService.update(id, updateBookingDto);
-    return this.responseService.successResponse(
-      'Booking updated successfully',
-      updated,
-    );
+    try {
+      const updated = await this.bookingsService.update(id, updateBookingDto);
+      return this.responseService.successResponse(
+        'Booking updated successfully',
+        updated,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a booking by ID' })
   @ApiResponse({ status: 200, description: 'Booking deleted successfully.' })
   async remove(@Param('id') id: string) {
-    const removed = await this.bookingsService.remove(id);
-    return this.responseService.successResponse(
-      'Booking deleted successfully',
-      removed,
-    );
+    try {
+      const removed = await this.bookingsService.remove(id);
+      return this.responseService.successResponse(
+        'Booking deleted successfully',
+        removed,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 }

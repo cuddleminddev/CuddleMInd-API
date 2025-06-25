@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+  HttpStatus,
+} from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { ResponseService } from 'src/response/response.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
@@ -16,11 +23,18 @@ export class AnalyticsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const data = await this.analyticsService.getAdminAnalytics(
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
-    return this.responseService.successResponse('admin analytics', data);
+    try {
+      const data = await this.analyticsService.getAdminAnalytics(
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+      );
+      return this.responseService.successResponse('Admin analytics', data);
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @Get('doctor/:doctorId')
@@ -29,12 +43,19 @@ export class AnalyticsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const data = await this.analyticsService.getDoctorAnalytics(
-      doctorId,
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
-    return this.responseService.successResponse('doctor analytics', data);
+    try {
+      const data = await this.analyticsService.getDoctorAnalytics(
+        doctorId,
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+      );
+      return this.responseService.successResponse('Doctor analytics', data);
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -43,11 +64,18 @@ export class AnalyticsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const data = await this.analyticsService.getPieChartDistributionChartJs(
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
-    return this.responseService.successResponse('Pie chart data', data);
+    try {
+      const data = await this.analyticsService.getPieChartDistributionChartJs(
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+      );
+      return this.responseService.successResponse('Pie chart data', data);
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 
   @UseGuards(JwtAuthGuard)
@@ -56,10 +84,17 @@ export class AnalyticsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    const data = await this.analyticsService.getBookingLineChartByType(
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
-    return this.responseService.successResponse('Line chart data', data);
+    try {
+      const data = await this.analyticsService.getBookingLineChartByType(
+        startDate ? new Date(startDate) : undefined,
+        endDate ? new Date(endDate) : undefined,
+      );
+      return this.responseService.successResponse('Line chart data', data);
+    } catch (error) {
+      return this.responseService.errorResponse(
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }
