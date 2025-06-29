@@ -153,10 +153,7 @@ export class AuthController {
   async sendOtp(@Body() data: EmailDto) {
     try {
       const result = await this.authService.generateOtp(data.email);
-      return this.responseService.successResponse(
-        'OTP sent successfully',
-        result,
-      );
+      return result;
     } catch (error) {
       return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
     }
@@ -166,10 +163,7 @@ export class AuthController {
   async verifyOtp(@Body() data: OtpVerifyDto) {
     try {
       const result = await this.authService.validateOtp(data.email, data.otp);
-      return this.responseService.successResponse(
-        'OTP verified successfully',
-        result,
-      );
+      return result;
     } catch (error) {
       return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
     }
