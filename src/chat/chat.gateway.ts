@@ -50,7 +50,8 @@ export class ChatGateway
     if (role === 'consultant') {
       this.consultants.set(userId, client);
     } else if (role === 'doctor') {
-      this.doctors.set(userId, client); // New map for regular doctors
+      this.doctors.set(userId, client);
+      this.broadcastDoctorList(); // 🔄 NEW
     } else if (role === 'patient') {
       this.patients.set(userId, client);
     }
@@ -74,6 +75,15 @@ export class ChatGateway
         return;
       }
     }
+
+    for (const [id, sock] of this.doctors.entries()) {
+      if (sock === client) {
+        this.doctors.delete(id);
+        console.log(`Doctor disconnected: ${id}`);
+        this.broadcastDoctorList(); // 🔄 NEW
+        return;
+      }
+    }
   }
 
   @SubscribeMessage('send_doctor_card')
@@ -93,7 +103,6 @@ export class ChatGateway
       doctorId,
     });
 
-    // Fetch doctor profile
     const doctor = await this.chatService.getDoctorCardData(doctorId);
     if (!doctor) {
       console.error('❌ Doctor not found for ID:', doctorId);
@@ -107,7 +116,6 @@ export class ChatGateway
 
     console.log('✅ Doctor card data fetched:', doctor);
 
-    // Attempt booking
     let bookingResult: any;
     try {
       const createBookingDto: CreateBookingDto = {
@@ -212,7 +220,6 @@ export class ChatGateway
       return;
     }
 
-    // ✅ Fetch doctor's name from DB
     const doctor = await this.prisma.user.findUnique({
       where: { id: doctorId },
       select: { name: true },
@@ -259,10 +266,12 @@ export class ChatGateway
     patientSocket?.emit('chat_started', { sessionId: updated.id });
     consultantSocket?.emit('chat_started', { sessionId: updated.id });
 
-    // Notify other consultants the session is taken
     for (const [id, sock] of this.consultants.entries()) {
       if (id !== payload.supportId) {
-        sock.emit('chat_taken', { sessionId: updated.id });
+        sock.emit('chat_taken', {
+          sessionId: updated.id,
+          patientId: updated.patientId, // 🔄 Added for frontend filtering
+        });
       }
     }
   }
@@ -287,7 +296,6 @@ export class ChatGateway
       timestamp: payload.timestamp || new Date().toISOString(),
     };
 
-    // Broadcast to everyone in the session (including sender)
     this.server.to(payload.sessionId).emit('receive_message', messagePayload);
   }
 
@@ -295,7 +303,6 @@ export class ChatGateway
   async handleEndChat(@MessageBody() payload: { sessionId: string }) {
     await this.chatService.endChatSession(payload.sessionId);
 
-    // Notify all users in the session
     this.server.to(payload.sessionId).emit('chat_ended', {
       sessionId: payload.sessionId,
       message: 'Chat session has ended.',
@@ -311,6 +318,17 @@ export class ChatGateway
   ) {
     client.join(sessionId);
     console.log(`Client ${client.id} joined session ${sessionId}`);
+  }
+
+  @SubscribeMessage('get_connected_doctors')
+  handleGetConnectedDoctors(@ConnectedSocket() client: Socket) {
+    const connectedDoctorIds = Array.from(this.doctors.keys());
+    client.emit('connected_doctors_list', connectedDoctorIds);
+  }
+
+  private broadcastDoctorList() {
+    const connectedDoctorIds = Array.from(this.doctors.keys());
+    this.server.emit('connected_doctors_list', connectedDoctorIds);
   }
 
   notifyDoctorOfInstantSession(doctorId: string, payload: any) {

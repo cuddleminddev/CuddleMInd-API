@@ -1,20 +1,10 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-} from '@nestjs/common';
+import { Controller, Post, Body, HttpStatus } from '@nestjs/common';
 import { ConsultationSessionsService } from './consultation-sessions.service';
 import {
   ConnectConsultationDto,
-  CreateConsultationSessionDto,
   EndConsultationDto,
   StartConsultationDto,
 } from './dto/create-consultation-session.dto';
-import { UpdateConsultationSessionDto } from './dto/update-consultation-session.dto';
 import { ResponseService } from 'src/response/response.service';
 
 @Controller('consultation-sessions')
@@ -26,34 +16,49 @@ export class ConsultationSessionsController {
 
   @Post('start')
   async start(@Body() dto: StartConsultationDto) {
-    const session = await this.consultationSessionsService.startSession(
-      dto.bookingId,
-      dto.createdBy,
-    );
-    return this.responseService.successResponse(
-      'session created Sucessfully',
-      session,
-    );
+    try {
+      const session = await this.consultationSessionsService.startSession(
+        dto.bookingId,
+        dto.createdBy,
+      );
+      return this.responseService.successResponse(
+        'Session created successfully',
+        session,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Post('connect')
   async connect(@Body() dto: ConnectConsultationDto) {
-    const response = await this.consultationSessionsService.connectSession(
-      dto.bookingId,
-    );
-    return this.responseService.successResponse(
-      'sucessfully connected',
-      response,
-    );
+    try {
+      const response = await this.consultationSessionsService.connectSession(
+        dto.bookingId,
+      );
+      return this.responseService.successResponse(
+        'Successfully connected',
+        response,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 
   @Post('end')
   async end(@Body() dto: EndConsultationDto) {
-    const resposne = await this.consultationSessionsService.endSession(
-      dto.bookingId,
-      dto.endedBy,
-      dto.notes,
-    );
-    return this.responseService.successResponse('sucessfully ended', resposne);
+    try {
+      const response = await this.consultationSessionsService.endSession(
+        dto.bookingId,
+        dto.endedBy,
+        dto.notes,
+      );
+      return this.responseService.successResponse(
+        'Successfully ended',
+        response,
+      );
+    } catch (error) {
+      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
+    }
   }
 }

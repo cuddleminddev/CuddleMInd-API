@@ -1,12 +1,8 @@
-import { Injectable, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 
 @Injectable()
 export class ResponseService {
-  successResponse(
-    message: string,
-    data?: any,
-    pagination?: any,
-  ) {
+  successResponse(message: string, data?: any, pagination?: any) {
     return {
       status: true,
       message,
@@ -15,11 +11,30 @@ export class ResponseService {
     };
   }
 
-  errorResponse(message: string, statusCode?: number, errors?: any) {
+  errorResponse(
+    error: string | Error | any,
+    statusCode?: number,
+    errors?: any,
+  ) {
+    let message = 'Something went wrong';
+    let code = statusCode || HttpStatus.BAD_REQUEST;
+
+    if (typeof error === 'string') {
+      message = error;
+    } else if (error instanceof HttpException) {
+      const response = error.getResponse() as any;
+      message = response?.message || error.message;
+      code = error.getStatus();
+    } else if (error instanceof Error) {
+      message = error.message;
+    } else if (typeof error?.message === 'string') {
+      message = error.message;
+    }
+
     return {
       status: false,
       message,
-      statusCode: statusCode || 400,
+      statusCode: code,
       errors,
     };
   }

@@ -15,6 +15,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { ConsultationSessionsModule } from './consultation-sessions/consultation-sessions.module';
 import { TimeSlotsModule } from './time-slots/time-slots.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { BannersModule } from './banners/banners.module';
+import { MailerModule } from './mailer/mailer.module';
 
 @Module({
   imports: [
@@ -36,6 +38,8 @@ import { ScheduleModule } from '@nestjs/schedule';
     AnalyticsModule,
     ConsultationSessionsModule,
     TimeSlotsModule,
+    BannersModule,
+    MailerModule,
   ],
 })
 export class AppModule {}
