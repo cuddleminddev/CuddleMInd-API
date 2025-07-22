@@ -106,6 +106,33 @@ export class ChatService {
     };
   }
 
+  async saveMessage(sessionId: string, senderId: string, message: string) {
+    return this.prisma.chatMessage.create({
+      data: {
+        sessionId,
+        senderId,
+        message,
+      },
+      include: {
+        sender: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+  }
+
+  async getMessagesBySession(sessionId: string) {
+    return this.prisma.chatMessage.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        sender: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+  }
+
   //Helper Functions
 
   async getUserById(id: string) {

@@ -277,26 +277,38 @@ export class ChatGateway
   }
 
   @SubscribeMessage('send_message')
-  handleSendMessage(
+  async handleSendMessage(
     @MessageBody()
     payload: {
       sessionId: string;
       senderId: string;
       senderName?: string;
       message: string;
-      timestamp?: string;
     },
     @ConnectedSocket() client: Socket,
   ) {
-    const messagePayload = {
-      sessionId: payload.sessionId,
-      senderId: payload.senderId,
-      senderName: payload.senderName || 'User',
-      message: payload.message,
-      timestamp: payload.timestamp || new Date().toISOString(),
-    };
+    try {
+      const savedMessage = await this.chatService.saveMessage(
+        payload.sessionId,
+        payload.senderId,
+        payload.message,
+      );
 
-    this.server.to(payload.sessionId).emit('receive_message', messagePayload);
+      const emitPayload = {
+        sessionId: payload.sessionId,
+        senderId: savedMessage.senderId,
+        senderName: savedMessage.sender.name,
+        message: savedMessage.message,
+        timestamp: savedMessage.createdAt,
+      };
+
+      this.server.to(payload.sessionId).emit('receive_message', emitPayload);
+    } catch (error) {
+      console.error('❌ Error saving message:', error);
+      client.emit('message_error', {
+        message: 'Failed to send message',
+      });
+    }
   }
 
   @SubscribeMessage('end_chat')
