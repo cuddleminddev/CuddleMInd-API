@@ -165,4 +165,26 @@ export class ChatService {
       select: { id: true, name: true },
     });
   }
+
+  async getMessagesBySender(senderId: string) {
+    return this.prisma.chatMessage.findMany({
+      where: { senderId, session: { status: 'ongoing' } },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+          },
+        },
+        session: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+      },
+    });
+  }
 }
