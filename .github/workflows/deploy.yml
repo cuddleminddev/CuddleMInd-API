@@ -3,7 +3,7 @@ name: Node.js CI
 on:
   push:
     branches:
-      - main
+      - production
 
 jobs:
   build-and-deploy:
@@ -34,7 +34,7 @@ jobs:
             set -e
             cd /var/www/CuddleMInd-API
             echo "🚀 Pulling latest code from main..."
-            git fetch origin main
+            git fetch origin production
             git reset --hard origin/main
 
             echo "📦 Installing dependencies..."
