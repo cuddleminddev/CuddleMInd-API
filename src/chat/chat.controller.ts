@@ -15,7 +15,7 @@ export class ChatController {
   @Get('messages-by-sender')
   async getMessagesBySender(@Request() req) {
     const senderId = req.user.id;
-    const messages = this.chatService.getMessagesBySender(senderId);
+    const messages = await this.chatService.getMessagesBySender(senderId);
     return this.responseService.successResponse(
       'Message History fetched sucessfully',
       messages,
