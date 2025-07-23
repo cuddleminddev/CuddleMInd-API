@@ -59,31 +59,35 @@ export class ChatGateway
     console.log(`${role} connected: ${userId}`);
   }
 
+  private removeClient(
+    roleMap: Map<string, Socket>,
+    roleName: string,
+    client: Socket,
+    afterRemove?: (id: string) => void,
+  ): boolean {
+    for (const [id, sock] of roleMap.entries()) {
+      if (sock === client) {
+        roleMap.delete(id);
+        console.log(`${roleName} disconnected: ${id}`);
+        afterRemove?.(id); // Pass id to callback
+        return true;
+      }
+    }
+    return false;
+  }
+
   handleDisconnect(client: Socket) {
-    for (const [id, sock] of this.consultants.entries()) {
-      if (sock === client) {
-        this.consultants.delete(id);
-        console.log(`Consultant disconnected: ${id}`);
-        return;
-      }
-    }
+    if (this.removeClient(this.consultants, 'Consultant', client)) return;
 
-    for (const [id, sock] of this.patients.entries()) {
-      if (sock === client) {
-        this.patients.delete(id);
-        console.log(`Patient disconnected: ${id}`);
-        return;
-      }
-    }
+    if (this.removeClient(this.patients, 'Patient', client)) return;
 
-    for (const [id, sock] of this.doctors.entries()) {
-      if (sock === client) {
-        this.doctors.delete(id);
-        console.log(`Doctor disconnected: ${id}`);
-        this.broadcastDoctorList(); // 🔄 NEW
-        return;
-      }
-    }
+    if (
+      this.removeClient(this.doctors, 'Doctor', client, (id) => {
+        this.broadcastDoctorList();
+        this.server.emit('doctor_disconnected', { doctorId: id });
+      })
+    )
+      return;
   }
 
   @SubscribeMessage('send_doctor_card')
@@ -277,26 +281,38 @@ export class ChatGateway
   }
 
   @SubscribeMessage('send_message')
-  handleSendMessage(
+  async handleSendMessage(
     @MessageBody()
     payload: {
       sessionId: string;
       senderId: string;
       senderName?: string;
       message: string;
-      timestamp?: string;
     },
     @ConnectedSocket() client: Socket,
   ) {
-    const messagePayload = {
-      sessionId: payload.sessionId,
-      senderId: payload.senderId,
-      senderName: payload.senderName || 'User',
-      message: payload.message,
-      timestamp: payload.timestamp || new Date().toISOString(),
-    };
+    try {
+      const savedMessage = await this.chatService.saveMessage(
+        payload.sessionId,
+        payload.senderId,
+        payload.message,
+      );
 
-    this.server.to(payload.sessionId).emit('receive_message', messagePayload);
+      const emitPayload = {
+        sessionId: payload.sessionId,
+        senderId: savedMessage.senderId,
+        senderName: savedMessage.sender.name,
+        message: savedMessage.message,
+        timestamp: savedMessage.createdAt,
+      };
+
+      this.server.to(payload.sessionId).emit('receive_message', emitPayload);
+    } catch (error) {
+      console.error('❌ Error saving message:', error);
+      client.emit('message_error', {
+        message: 'Failed to send message',
+      });
+    }
   }
 
   @SubscribeMessage('end_chat')
@@ -312,12 +328,15 @@ export class ChatGateway
   }
 
   @SubscribeMessage('joinSession')
-  handleJoinSession(
+  async handleJoinSession(
     @MessageBody() sessionId: string,
     @ConnectedSocket() client: Socket,
   ) {
     client.join(sessionId);
     console.log(`Client ${client.id} joined session ${sessionId}`);
+
+    const messages = await this.chatService.getMessagesBySession(sessionId);
+    client.emit('chat_history', messages);
   }
 
   @SubscribeMessage('get_connected_doctors')
@@ -329,6 +348,26 @@ export class ChatGateway
   private broadcastDoctorList() {
     const connectedDoctorIds = Array.from(this.doctors.keys());
     this.server.emit('connected_doctors_list', connectedDoctorIds);
+  }
+
+  @SubscribeMessage('rejoin_session')
+  async handleRejoinSession(
+    @MessageBody() payload: { sessionId: string; userId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const session = await this.chatService.getSessionById(payload.sessionId);
+    if (!session) {
+      client.emit('rejoin_error', { message: 'Session not found' });
+      return;
+    }
+
+    client.join(payload.sessionId);
+    const messages = await this.chatService.getMessagesBySession(
+      payload.sessionId,
+    );
+
+    client.emit('chat_history', messages);
+    client.emit('rejoined_session', { sessionId: payload.sessionId });
   }
 
   notifyDoctorOfInstantSession(doctorId: string, payload: any) {

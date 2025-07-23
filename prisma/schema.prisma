@@ -55,6 +55,13 @@ enum UserStatus {
   disabled
 }
 
+enum ChatMessageType {
+  text
+  image
+  doctor_card
+  system
+}
+
 // Tables
 model User {
   id             String     @id @default(uuid()) @map("id")
@@ -81,6 +88,7 @@ model User {
   patientReviews         Review[]               @relation("PatientReviews")
   doctorReviews          Review[]               @relation("DoctorReviews")
   timeslots              Timeslot[]
+  ChatMessage            ChatMessage[]
 
   @@map("users")
 }
@@ -240,10 +248,26 @@ model ChatSession {
   endedAt   DateTime?         @map("ended_at")
   status    SessionStatusEnum @default(pending) @map("status")
 
-  patient User  @relation("ChatPatient", fields: [patientId], references: [id])
-  support User? @relation("ChatSupport", fields: [supportId], references: [id])
+  patient     User          @relation("ChatPatient", fields: [patientId], references: [id])
+  support     User?         @relation("ChatSupport", fields: [supportId], references: [id])
+  ChatMessage ChatMessage[]
 
   @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        String          @id @default(uuid())
+  sessionId String          @map("session_id")
+  senderId  String          @map("sender_id")
+  message   String?         @map("message")
+  type      ChatMessageType @default(text) @map("type")
+  payload   Json?           @map("payload")
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  session ChatSession @relation(fields: [sessionId], references: [id])
+  sender  User        @relation(fields: [senderId], references: [id])
+
+  @@map("chat_messages")
 }
 
 model Review {
@@ -279,8 +303,8 @@ model Timeslot {
 model Banner {
   id        String   @id @default(uuid())
   title     String
-  imageUrl  String   // URL or S3/GCS path
-  linkUrl   String?  // Optional: target link when clicked
+  imageUrl  String // URL or S3/GCS path
+  linkUrl   String? // Optional: target link when clicked
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

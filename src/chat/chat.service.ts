@@ -106,6 +106,57 @@ export class ChatService {
     };
   }
 
+  async saveMessage(sessionId: string, senderId: string, message: string) {
+    return this.prisma.chatMessage.create({
+      data: {
+        sessionId,
+        senderId,
+        message,
+      },
+      include: {
+        sender: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+  }
+
+  async getSessionById(sessionId: string) {
+    return this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+    });
+  }
+
+  async getMessagesBySession(sessionId: string) {
+    return this.prisma.chatMessage.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        sender: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+  }
+
+  async saveDoctorCardMessage(
+    sessionId: string,
+    senderId: string,
+    doctorData: any,
+  ) {
+    return this.prisma.chatMessage.create({
+      data: {
+        sessionId,
+        senderId,
+        type: 'doctor_card',
+        payload: doctorData,
+      },
+      include: {
+        sender: { select: { name: true } },
+      },
+    });
+  }
+
   //Helper Functions
 
   async getUserById(id: string) {
