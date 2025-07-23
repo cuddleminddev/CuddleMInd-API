@@ -4,9 +4,10 @@ import { ChatService } from './chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BookingsModule } from 'src/bookings/bookings.module';
 import { ChatController } from './chat.controller';
+import { ResponseModule } from 'src/response/response.module';
 
 @Module({
-  imports: [BookingsModule],
+  imports: [BookingsModule, ResponseModule],
   providers: [ChatGateway, ChatService, PrismaService],
   exports: [ChatGateway],
   controllers: [ChatController],
