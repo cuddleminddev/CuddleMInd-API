@@ -121,6 +121,12 @@ export class ChatService {
     });
   }
 
+  async getSessionById(sessionId: string) {
+    return this.prisma.chatSession.findUnique({
+      where: { id: sessionId },
+    });
+  }
+
   async getMessagesBySession(sessionId: string) {
     return this.prisma.chatMessage.findMany({
       where: { sessionId },
@@ -129,6 +135,24 @@ export class ChatService {
         sender: {
           select: { id: true, name: true, role: true },
         },
+      },
+    });
+  }
+
+  async saveDoctorCardMessage(
+    sessionId: string,
+    senderId: string,
+    doctorData: any,
+  ) {
+    return this.prisma.chatMessage.create({
+      data: {
+        sessionId,
+        senderId,
+        type: 'doctor_card',
+        payload: doctorData,
+      },
+      include: {
+        sender: { select: { name: true } },
       },
     });
   }

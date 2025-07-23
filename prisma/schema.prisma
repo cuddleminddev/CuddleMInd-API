@@ -55,6 +55,13 @@ enum UserStatus {
   disabled
 }
 
+enum ChatMessageType {
+  text
+  image
+  doctor_card
+  system
+}
+
 // Tables
 model User {
   id             String     @id @default(uuid()) @map("id")
@@ -249,11 +256,13 @@ model ChatSession {
 }
 
 model ChatMessage {
-  id        String   @id @default(uuid())
-  sessionId String   @map("session_id")
-  senderId  String   @map("sender_id")
-  message   String   @map("message")
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String          @id @default(uuid())
+  sessionId String          @map("session_id")
+  senderId  String          @map("sender_id")
+  message   String?         @map("message")
+  type      ChatMessageType @default(text) @map("type")
+  payload   Json?           @map("payload")
+  createdAt DateTime        @default(now()) @map("created_at")
 
   session ChatSession @relation(fields: [sessionId], references: [id])
   sender  User        @relation(fields: [senderId], references: [id])
