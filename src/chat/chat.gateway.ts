@@ -142,6 +142,13 @@ export class ChatGateway
         patientId,
       );
 
+      await this.chatService.saveDoctorCardMessage(sessionId, doctorId, {
+        id: doctor.id,
+        name: doctor.name,
+        email: doctor.email,
+        profilePicture: doctor.profilePicture,
+      });
+
       console.log('✅ Booking created successfully:', bookingResult);
     } catch (error) {
       console.error('❌ Booking creation failed:', error.message);
@@ -336,6 +343,7 @@ export class ChatGateway
     console.log(`Client ${client.id} joined session ${sessionId}`);
 
     const messages = await this.chatService.getMessagesBySession(sessionId);
+    console.log(sessionId, messages);
     client.emit('chat_history', messages);
   }
 
