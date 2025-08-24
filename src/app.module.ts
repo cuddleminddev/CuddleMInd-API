@@ -17,6 +17,8 @@ import { TimeSlotsModule } from './time-slots/time-slots.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BannersModule } from './banners/banners.module';
 import { MailerModule } from './mailer/mailer.module';
+import { AffirmationsModule } from './affirmations/affirmations.module';
+import { MoodSupportModule } from './mood-support/mood-support.module';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { MailerModule } from './mailer/mailer.module';
     TimeSlotsModule,
     BannersModule,
     MailerModule,
+    AffirmationsModule,
+    MoodSupportModule,
   ],
 })
 export class AppModule {}
