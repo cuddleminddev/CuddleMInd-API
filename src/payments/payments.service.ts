@@ -5,9 +5,7 @@ import { PaymentType, TransactionStatus } from '@prisma/client';
 
 @Injectable()
 export class PaymentsService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async createOneTimePayment({
     userId,

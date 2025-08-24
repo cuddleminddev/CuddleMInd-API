@@ -208,4 +208,184 @@ export class ChatService {
       },
     });
   }
+
+  // Chat History API Methods
+
+  /**
+   * Get all chat sessions for a user with pagination and filtering
+   */
+  async getChatSessions(
+    userId: string,
+    page: number = 1,
+    limit: number = 10,
+    status?: string,
+  ) {
+    const skip = (page - 1) * limit;
+    const where: any = {
+      OR: [{ patientId: userId }, { supportId: userId }],
+    };
+
+    if (status) {
+      where.status = status;
+    }
+
+    const [sessions, totalCount] = await Promise.all([
+      this.prisma.chatSession.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { startedAt: 'desc' },
+        include: {
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profilePicture: true,
+            },
+          },
+          support: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profilePicture: true,
+            },
+          },
+          ChatMessage: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              message: true,
+              type: true,
+              createdAt: true,
+              sender: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              ChatMessage: true,
+            },
+          },
+        },
+      }),
+      this.prisma.chatSession.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+    const hasNextPage = page < totalPages;
+    const hasPreviousPage = page > 1;
+
+    return {
+      sessions: sessions.map((session) => ({
+        id: session.id,
+        status: session.status,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        patient: session.patient,
+        support: session.support,
+        lastMessage: session.ChatMessage[0] || null,
+        messageCount: session._count.ChatMessage,
+      })),
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalCount,
+        hasNextPage,
+        hasPreviousPage,
+        limit,
+      },
+    };
+  }
+
+  /**
+   * Get messages in a specific chat session with pagination
+   */
+  async getChatMessages(
+    sessionId: string,
+    userId: string,
+    page: number = 1,
+    limit: number = 50,
+  ) {
+    // First verify that the user has access to this session
+    const session = await this.prisma.chatSession.findFirst({
+      where: {
+        id: sessionId,
+        OR: [{ patientId: userId }, { supportId: userId }],
+      },
+    });
+
+    if (!session) {
+      throw new NotFoundException('Chat session not found or access denied');
+    }
+
+    const skip = (page - 1) * limit;
+    const where = { sessionId };
+
+    const [messages, totalCount] = await Promise.all([
+      this.prisma.chatMessage.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'asc' },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              profilePicture: true,
+              role: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.chatMessage.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+    const hasNextPage = page < totalPages;
+    const hasPreviousPage = page > 1;
+
+    return {
+      sessionInfo: {
+        id: session.id,
+        status: session.status,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+      },
+      messages: messages.map((message) => ({
+        id: message.id,
+        message: message.message,
+        type: message.type,
+        payload: message.payload,
+        createdAt: message.createdAt,
+        sender: {
+          id: message.sender.id,
+          name: message.sender.name,
+          email: message.sender.email,
+          profilePicture: message.sender.profilePicture,
+          role: message.sender.role.name,
+        },
+      })),
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalCount,
+        hasNextPage,
+        hasPreviousPage,
+        limit,
+      },
+    };
+  }
 }
