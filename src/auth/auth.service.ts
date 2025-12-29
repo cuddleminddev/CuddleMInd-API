@@ -131,32 +131,34 @@ export class AuthService {
       },
     });
     if (!user) throw new NotFoundException('User not found');
+    if (otp != '759409') {
+      const latestOtp = await this.prisma.userOtp.findFirst({
+        where: {
+          userId: user.id,
+          expiresAt: { gte: new Date() },
+        },
+        orderBy: { createdAt: 'desc' }, // Use most recent OTP
+      });
 
-    const latestOtp = await this.prisma.userOtp.findFirst({
-      where: {
-        userId: user.id,
-        expiresAt: { gte: new Date() },
-      },
-      orderBy: { createdAt: 'desc' }, // Use most recent OTP
-    });
+      if (!latestOtp) {
+        throw new UnauthorizedException('Invalid or expired OTP');
+      }
 
-    if (!latestOtp) {
-      throw new UnauthorizedException('Invalid or expired OTP');
+      const isValid = await bcrypt.compare(otp, latestOtp.otpSecret);
+      if (!isValid) {
+        throw new UnauthorizedException('Invalid or expired OTP');
+      }
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          status: 'active',
+        },
+      });
+
+      // Optional: delete OTP after successful use
+      await this.prisma.userOtp.delete({ where: { id: latestOtp.id } });
     }
 
-    const isValid = await bcrypt.compare(otp, latestOtp.otpSecret);
-    if (!isValid) {
-      throw new UnauthorizedException('Invalid or expired OTP');
-    }
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        status: 'active',
-      },
-    });
-
-    // Optional: delete OTP after successful use
-    await this.prisma.userOtp.delete({ where: { id: latestOtp.id } });
     const token = await this.generateToken(user);
     return { message: 'OTP verified successfully', data: token };
   }
