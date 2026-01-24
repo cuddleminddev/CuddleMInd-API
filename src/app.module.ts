@@ -19,6 +19,7 @@ import { BannersModule } from './banners/banners.module';
 import { MailerModule } from './mailer/mailer.module';
 import { AffirmationsModule } from './affirmations/affirmations.module';
 import { MoodSupportModule } from './mood-support/mood-support.module';
+import { ContactUsModule } from './contact-us/contact-us.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { MoodSupportModule } from './mood-support/mood-support.module';
     MailerModule,
     AffirmationsModule,
     MoodSupportModule,
+    ContactUsModule,
   ],
 })
 export class AppModule {}
