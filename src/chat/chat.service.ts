@@ -11,32 +11,73 @@ import { ChatSession, SessionStatusEnum } from '@prisma/client';
 export class ChatService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createChatSession(patientId: string) {
+  /**
+   * Find or create a chat session between patient and support.
+   * This ensures only one session exists per user pair, continuing the conversation history.
+   */
+  async findOrCreateChatSession(patientId: string, supportId?: string) {
+    // Build the where clause based on whether supportId is provided
+    const where: any = {
+      patientId,
+    };
+
+    // If supportId is provided, look for session between this specific pair
+    if (supportId) {
+      where.supportId = supportId;
+    }
+
+    // First, try to find an existing session (any status)
+    let session = await this.prisma.chatSession.findFirst({
+      where,
+      orderBy: { startedAt: 'desc' }, // Get the most recent one
+    });
+
+    // If session exists, reopen it if it was completed
+    if (session) {
+      if (session.status === SessionStatusEnum.completed) {
+        // Reopen the session
+        session = await this.prisma.chatSession.update({
+          where: { id: session.id },
+          data: {
+            status: supportId ? SessionStatusEnum.ongoing : SessionStatusEnum.pending,
+            startedAt: new Date(),
+            endedAt: null,
+          },
+        });
+      }
+      return session;
+    }
+
+    // If no session exists, create a new one
     return await this.prisma.chatSession.create({
       data: {
         patientId,
-        status: SessionStatusEnum.pending,
+        supportId,
+        status: supportId ? SessionStatusEnum.ongoing : SessionStatusEnum.pending,
       },
     });
   }
 
+  /**
+   * Start a session for a patient
+   * Uses findOrCreateChatSession to reuse existing sessions
+   */
   async startSession(patientId: string): Promise<ChatSession> {
-    const existing = await this.prisma.chatSession.findFirst({
-      where: {
-        patientId,
-        status: { in: ['pending', 'ongoing'] },
-      },
-    });
-    if (existing) throw new ConflictException('Chat already in progress');
-
-    const support = await this.findAvailableSupport(); // define this logic
-    return this.prisma.chatSession.create({
-      data: {
-        patientId,
-        //supportId: support?.id,
-        status: 'ongoing',
-      },
-    });
+    // Get or create a session for this patient
+    const session = await this.findOrCreateChatSession(patientId);
+    
+    // If session is not already ongoing, update it
+    if (session.status !== SessionStatusEnum.ongoing) {
+      return this.prisma.chatSession.update({
+        where: { id: session.id },
+        data: {
+          status: SessionStatusEnum.ongoing,
+          startedAt: new Date(),
+        },
+      });
+    }
+    
+    return session;
   }
 
   findAvailableSupport() {
@@ -57,7 +98,38 @@ export class ChatService {
       return null; // Indicates session was already taken
     }
 
-    // Assign the consultant
+    // Check if there's already an existing session between this patient and support
+    const existingSession = await this.prisma.chatSession.findFirst({
+      where: {
+        patientId: session.patientId,
+        supportId,
+        id: { not: sessionId }, // Exclude current session
+      },
+    });
+
+    if (existingSession) {
+      // Use the existing session instead of creating a new one
+      // Delete the new pending session
+      await this.prisma.chatSession.delete({
+        where: { id: sessionId },
+      });
+
+      // Reopen existing session if completed
+      if (existingSession.status === SessionStatusEnum.completed) {
+        return this.prisma.chatSession.update({
+          where: { id: existingSession.id },
+          data: {
+            status: SessionStatusEnum.ongoing,
+            startedAt: new Date(),
+            endedAt: null,
+          },
+        });
+      }
+
+      return existingSession;
+    }
+
+    // Assign the consultant to the current session
     return this.prisma.chatSession.update({
       where: { id: sessionId },
       data: {
@@ -68,13 +140,43 @@ export class ChatService {
     });
   }
 
-  async getActiveSession(patientId: string): Promise<ChatSession | null> {
-    return this.prisma.chatSession.findFirst({
+  /**
+   * Get active or most recent session for a patient
+   * Prioritizes ongoing/pending sessions, but returns completed ones if no active session exists
+   */
+  async getActiveSession(patientId: string, supportId?: string): Promise<ChatSession | null> {
+    const where: any = { patientId };
+    
+    if (supportId) {
+      where.supportId = supportId;
+    }
+
+    // First try to find an active session
+    let session = await this.prisma.chatSession.findFirst({
       where: {
-        patientId,
+        ...where,
         status: { in: ['pending', 'ongoing'] },
       },
+      orderBy: { startedAt: 'desc' },
     });
+
+    // If no active session, return the most recent completed session
+    if (!session) {
+      session = await this.prisma.chatSession.findFirst({
+        where,
+        orderBy: { startedAt: 'desc' },
+      });
+    }
+
+    return session;
+  }
+
+  /**
+   * Get or resume a session between two specific users
+   * This allows continuing an existing conversation
+   */
+  async getOrResumeSession(patientId: string, supportId: string): Promise<ChatSession> {
+    return this.findOrCreateChatSession(patientId, supportId);
   }
 
   async endChatSession(sessionId: string) {
