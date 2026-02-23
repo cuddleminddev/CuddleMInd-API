@@ -190,7 +190,8 @@ export class ChatGateway
     const patient = await this.chatService.getUserById(patientId);
     if (!patient) return;
 
-    const chatSession = await this.chatService.createChatSession(patientId);
+    // Find or create a session for this patient (no support assigned yet)
+    const chatSession = await this.chatService.findOrCreateChatSession(patientId);
 
     const timestamp = new Date().toISOString();
 
