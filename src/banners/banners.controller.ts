@@ -13,8 +13,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { S3Service } from 'src/s3/s3.service';
 
 import { BannersService } from './banners.service';
 import { CreateBannerDto } from './dto/create-banner.dto';
@@ -28,24 +27,13 @@ export class BannersController {
   constructor(
     private readonly bannersService: BannersService,
     private readonly responseService: ResponseService,
+    private readonly s3Service: S3Service,
   ) {}
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Post()
-  @UseInterceptors(
-    FileInterceptor('image', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (req, file, cb) => {
-          const uniqueName = `${Date.now()}-${Math.round(
-            Math.random() * 1e9,
-          )}${extname(file.originalname)}`;
-          cb(null, uniqueName);
-        },
-      }),
-    }),
-  )
+  @UseInterceptors(FileInterceptor('image'))
   async create(
     @UploadedFile() file: Express.Multer.File,
     @Body() body: CreateBannerDto,
@@ -54,7 +42,10 @@ export class BannersController {
       throw new BadRequestException('Image file is required');
     }
 
-    const imageUrl = `/uploads/${file.filename}`;
+    // Upload image to S3
+    const uploadResult = await this.s3Service.uploadFile(file, 'banners');
+    const imageUrl = uploadResult.url;
+
     const banner = await this.bannersService.create({
       ...body,
       imageUrl,
@@ -84,19 +75,7 @@ export class BannersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @Patch(':id')
-  @UseInterceptors(
-    FileInterceptor('image', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (req, file, cb) => {
-          const uniqueName = `${Date.now()}-${Math.round(
-            Math.random() * 1e9,
-          )}${extname(file.originalname)}`;
-          cb(null, uniqueName);
-        },
-      }),
-    }),
-  )
+  @UseInterceptors(FileInterceptor('image'))
   async update(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
@@ -108,7 +87,9 @@ export class BannersController {
     };
 
     if (file) {
-      updateData.imageUrl = `/uploads/${file.filename}`;
+      // Upload new image to S3
+      const uploadResult = await this.s3Service.uploadFile(file, 'banners');
+      updateData.imageUrl = uploadResult.url;
     }
 
     const banner = await this.bannersService.update(id, updateData);
