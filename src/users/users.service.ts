@@ -8,6 +8,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import * as bcrypt from 'bcryptjs';
 import dayjs from 'dayjs';
+import { CreateRoleDto } from './dto/create-role.dto';
 
 export interface FindAllOptions {
   page: number;
@@ -19,7 +20,7 @@ export interface FindAllOptions {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(createUserDto: CreateUserDto) {
     const { name, email, phone, password, role } = createUserDto;
@@ -300,5 +301,22 @@ export class UsersService {
     await this.findOne(id); // Ensures user exists
     await this.prisma.user.delete({ where: { id } });
     return { message: `User with ID ${id} deleted successfully` };
+  }
+
+
+  async createRole(createRoleDto: CreateRoleDto) {
+    const existingRole = await this.prisma.role.findUnique({
+      where: { name: createRoleDto.name },
+    });
+
+    if (existingRole) {
+      throw new ConflictException('Role already exists');
+    }
+
+    return await this.prisma.role.create({
+      data: {
+        name: createRoleDto.name,
+      },
+    });
   }
 }
