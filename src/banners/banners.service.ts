@@ -6,7 +6,7 @@ import * as path from 'path';
 
 @Injectable()
 export class BannersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private buildImageUrl(relativePath: string): string {
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
@@ -21,7 +21,7 @@ export class BannersService {
     const banners = await this.prisma.banner.findMany();
     return banners.map((banner) => ({
       ...banner,
-      imageUrl: this.buildImageUrl(banner.imageUrl),
+      // imageUrl: this.buildImageUrl(banner.imageUrl),
     }));
   }
 
