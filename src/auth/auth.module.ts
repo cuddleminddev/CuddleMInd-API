@@ -25,7 +25,7 @@ import { MailerModule } from 'src/mailer/mailer.module';
         secret: configService.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
           expiresIn: Number(
-            configService.get<string>('JWT_EXPIRATION', '24h'),
+            configService.get<string>('JWT_EXPIRATION', '86400'),
           ),
         },
       }),
