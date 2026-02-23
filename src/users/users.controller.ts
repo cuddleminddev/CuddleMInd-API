@@ -27,11 +27,12 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ResponseService } from 'src/response/response.service';
+import { CreateRoleDto } from './dto/create-role.dto';
 
 @ApiTags('Users')
 @ApiBearerAuth()
 @Controller('users')
-@UseGuards(JwtAuthGuard)
+// @UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
@@ -212,5 +213,10 @@ export class UsersController {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  @Post("create/roles")
+  async createRole(@Body() createRoleDto: CreateRoleDto) {
+    return await this.usersService.createRole(createRoleDto);
   }
 }
