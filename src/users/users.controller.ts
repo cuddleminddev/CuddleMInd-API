@@ -40,7 +40,7 @@ export class UsersController {
   ) { }
 
   @Post()
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Create a new user (admin only)' })
   async create(@Body() createUserDto: CreateUserDto) {
@@ -60,7 +60,7 @@ export class UsersController {
   }
 
   @Get()
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Get all users (admin only)' })
   async findAll(
@@ -89,7 +89,7 @@ export class UsersController {
   }
 
   @Get('doctors')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin', 'staff')
   @ApiOperation({ summary: 'Get all doctor users' })
   async findAvailableDoctors() {
@@ -105,7 +105,7 @@ export class UsersController {
   }
 
   @Get('staff')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Get all staff users (admin only)' })
   async findAllStaff() {
@@ -135,7 +135,7 @@ export class UsersController {
   }
 
   @Get('roles')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Get all available roles (Admin only)' })
   async getRoles() {
@@ -154,7 +154,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Get user by ID (admin only)' })
   async findOne(@Param('id') id: string) {
@@ -184,7 +184,7 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Update user by ID (admin only)' })
   async update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
@@ -200,7 +200,7 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @ApiOperation({ summary: 'Delete user by ID (admin only)' })
   async remove(@Param('id') id: string) {
