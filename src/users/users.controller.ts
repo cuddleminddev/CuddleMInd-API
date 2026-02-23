@@ -39,8 +39,8 @@ export class UsersController {
   ) { }
 
   @Post()
-  // @UseGuards(RolesGuard)
-  // @Roles('admin')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a new user (admin only)' })
   async create(@Body() createUserDto: CreateUserDto) {
     try {
