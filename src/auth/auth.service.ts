@@ -5,6 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import { UserStatus } from '@prisma/client';
@@ -14,6 +15,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
   ) { }
 
   // Register a new user
@@ -131,13 +133,18 @@ export class AuthService {
       },
     });
     if (!user) throw new NotFoundException('User not found');
-    if (otp != '759409') {
+
+    // If DEFAULT_OTP is set in .env and the user submits it, bypass real OTP check
+    const defaultOtp = this.configService.get<string>('DEFAULT_OTP');
+    const isDefaultOtp = defaultOtp && otp === defaultOtp;
+
+    if (!isDefaultOtp) {
       const latestOtp = await this.prisma.userOtp.findFirst({
         where: {
           userId: user.id,
           expiresAt: { gte: new Date() },
         },
-        orderBy: { createdAt: 'desc' }, // Use most recent OTP
+        orderBy: { createdAt: 'desc' },
       });
 
       if (!latestOtp) {
@@ -148,15 +155,17 @@ export class AuthService {
       if (!isValid) {
         throw new UnauthorizedException('Invalid or expired OTP');
       }
+
+      // Delete OTP after successful use
+      await this.prisma.userOtp.delete({ where: { id: latestOtp.id } });
+    }
+
+    // Activate the user account on successful OTP verification
+    if (user.status !== 'active') {
       await this.prisma.user.update({
         where: { id: user.id },
-        data: {
-          status: 'active',
-        },
+        data: { status: 'active' },
       });
-
-      // Optional: delete OTP after successful use
-      await this.prisma.userOtp.delete({ where: { id: latestOtp.id } });
     }
 
     const token = await this.generateToken(user);

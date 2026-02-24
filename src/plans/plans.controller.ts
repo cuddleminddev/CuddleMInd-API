@@ -10,7 +10,8 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
   Req,
-  HttpStatus,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PlansService } from './plans.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
@@ -43,83 +44,63 @@ export class PlansController {
   @ApiOperation({ summary: 'List all active plans' })
   @ApiResponse({ status: 200, description: 'List of plans' })
   async findAll() {
-    try {
-      const plans = await this.planService.findAll();
-      return this.responseService.successResponse(
-        'Plans fetched successfully',
-        plans,
-      );
-    } catch (error) {
-      return this.responseService.errorResponse(
-        error,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+    const plans = await this.planService.findAll();
+    return this.responseService.successResponse(
+      'Plans fetched successfully',
+      plans,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
   @Post(':packageId/purchase')
   async purchasePlan(@Param('packageId') packageId: string, @Req() req: any) {
-    try {
-      const userId = req.user.id;
+    const userId = req.user.id;
 
-      const plan = await this.prisma.planPackage.findUnique({
-        where: { id: packageId },
-      });
+    const plan = await this.prisma.planPackage.findUnique({
+      where: { id: packageId },
+    });
 
-      if (!plan) {
-        return this.responseService.errorResponse(
-          'Plan not found',
-          HttpStatus.NOT_FOUND,
-        );
-      }
-
-      if (plan.isActive === false) {
-        return this.responseService.errorResponse(
-          'Plan is not active',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      const startDate = new Date();
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + plan.timePeriod);
-
-      const userPlan = await this.prisma.userPlan.create({
-        data: {
-          patientId: userId,
-          packageId,
-          bookingsPending: plan.bookingFrequency,
-          startDate,
-          endDate,
-          isActive: false,
-        },
-      });
-
-      const metadata = {
-        packageId,
-        userId,
-        userPlanId: userPlan.id,
-        type: 'plan',
-      };
-
-      const secret = await this.stripeService.createPaymentIntent(
-        userId,
-        Number(plan.amount),
-        'plan',
-        metadata,
-      );
-
-      return this.responseService.successResponse(
-        'Success. Proceed to payment',
-        secret,
-      );
-    } catch (error) {
-      return this.responseService.errorResponse(
-        error,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+    if (!plan) {
+      throw new NotFoundException('Plan not found');
     }
+
+    if (plan.isActive === false) {
+      throw new BadRequestException('Plan is not active');
+    }
+
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + plan.timePeriod);
+
+    const userPlan = await this.prisma.userPlan.create({
+      data: {
+        patientId: userId,
+        packageId,
+        bookingsPending: plan.bookingFrequency,
+        startDate,
+        endDate,
+        isActive: false,
+      },
+    });
+
+    const metadata = {
+      packageId,
+      userId,
+      userPlanId: userPlan.id,
+      type: 'plan',
+    };
+
+    const paymentOrder = await this.stripeService.createPaymentIntent(
+      userId,
+      Number(plan.amount),
+      'plan',
+      metadata,
+    );
+
+    return this.responseService.successResponse(
+      'Success. Proceed to payment',
+      paymentOrder,
+    );
   }
 
   @Get('paginated')
@@ -131,32 +112,21 @@ export class PlansController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
   ) {
-    try {
-      const data = await this.planService.findAllPaginated(page, limit);
-      return this.responseService.successResponse(
-        'Plans fetched successfully',
-        data,
-      );
-    } catch (error) {
-      return this.responseService.errorResponse(
-        error,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
-    }
+    const data = await this.planService.findAllPaginated(page, limit);
+    return this.responseService.successResponse(
+      'Plans fetched successfully',
+      data,
+    );
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get plan details by id' })
   async findOne(@Param('id') id: string) {
-    try {
-      const plan = await this.planService.findOne(id);
-      return this.responseService.successResponse(
-        'Plan fetched successfully',
-        plan,
-      );
-    } catch (error) {
-      return this.responseService.errorResponse(error, HttpStatus.NOT_FOUND);
-    }
+    const plan = await this.planService.findOne(id);
+    return this.responseService.successResponse(
+      'Plan fetched successfully',
+      plan,
+    );
   }
 
   @Post()
@@ -165,15 +135,11 @@ export class PlansController {
   @Roles('admin')
   @ApiOperation({ summary: 'Create a new plan (admin only)' })
   async create(@Body() createPlanDto: CreatePlanDto) {
-    try {
-      const plan = await this.planService.create(createPlanDto);
-      return this.responseService.successResponse(
-        'Plan created successfully',
-        plan,
-      );
-    } catch (error) {
-      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
-    }
+    const plan = await this.planService.create(createPlanDto);
+    return this.responseService.successResponse(
+      'Plan created successfully',
+      plan,
+    );
   }
 
   @Patch(':id')
@@ -182,15 +148,11 @@ export class PlansController {
   @Roles('admin')
   @ApiOperation({ summary: 'Update an existing plan (admin only)' })
   async update(@Param('id') id: string, @Body() updatePlanDto: UpdatePlanDto) {
-    try {
-      const updatedPlan = await this.planService.update(id, updatePlanDto);
-      return this.responseService.successResponse(
-        'Plan updated successfully',
-        updatedPlan,
-      );
-    } catch (error) {
-      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
-    }
+    const updatedPlan = await this.planService.update(id, updatePlanDto);
+    return this.responseService.successResponse(
+      'Plan updated successfully',
+      updatedPlan,
+    );
   }
 
   @Patch(':id/deactivate')
@@ -199,14 +161,10 @@ export class PlansController {
   @Roles('admin')
   @ApiOperation({ summary: 'Deactivate a plan (admin only)' })
   async deactivate(@Param('id') id: string) {
-    try {
-      const result = await this.planService.deactivate(id);
-      return this.responseService.successResponse(
-        'Plan deactivated successfully',
-        result,
-      );
-    } catch (error) {
-      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
-    }
+    const result = await this.planService.deactivate(id);
+    return this.responseService.successResponse(
+      'Plan deactivated successfully',
+      result,
+    );
   }
 }

@@ -10,7 +10,7 @@ import { ResponseModule } from './response/response.module';
 import { ChatModule } from './chat/chat.module';
 import { PlansModule } from './plans/plans.module';
 import { ReviewModule } from './review/review.module';
-import { StripeModule } from './stripe/stripe.module';
+import { StripeModule } from './stripe/stripe.module'; // Razorpay integration
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ConsultationSessionsModule } from './consultation-sessions/consultation-sessions.module';
 import { TimeSlotsModule } from './time-slots/time-slots.module';

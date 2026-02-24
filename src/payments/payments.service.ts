@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Stripe } from 'stripe';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PaymentType, TransactionStatus } from '@prisma/client';
 

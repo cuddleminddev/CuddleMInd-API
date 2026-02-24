@@ -5,6 +5,7 @@ import { json, urlencoded } from 'express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -17,9 +18,9 @@ async function bootstrap() {
     prefix: '/uploads',
   });
 
-  // Stripe webhook needs raw body
+  // Razorpay webhook needs raw body
   app.use(
-    '/v1/webhook/stripe',
+    '/v1/webhook/razorpay',
     json({
       verify: (req: any, res, buf) => {
         req.rawBody = buf;
@@ -30,6 +31,9 @@ async function bootstrap() {
   // For all other routes
   app.use(json());
   app.use(urlencoded({ extended: true }));
+
+  // Global exception filter — sends correct HTTP status codes for all errors
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   // Validation
   app.useGlobalPipes(

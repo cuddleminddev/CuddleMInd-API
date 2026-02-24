@@ -13,6 +13,7 @@ import { MailerModule } from 'src/mailer/mailer.module';
 
 @Module({
   imports: [
+    ConfigModule,
     PrismaModule,
     UsersModule,
     MailerModule,

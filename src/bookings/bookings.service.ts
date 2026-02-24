@@ -105,7 +105,7 @@ export class BookingsService {
 
       console.log('📘 Booking created:', booking);
 
-      const paymentIntent = await this.stripeService.createPaymentIntent(
+      const paymentOrder = await this.stripeService.createPaymentIntent(
         patientId,
         Number(consultationCharge),
         PaymentType.one_time,
@@ -116,14 +116,14 @@ export class BookingsService {
         },
       );
 
-      console.log('💳 Stripe payment intent:', paymentIntent);
+      console.log('💳 Razorpay order created:', paymentOrder);
 
       await this.markDoctorUnavailable(assignedDoctorId, new Date(scheduledAt));
 
       return {
         booking,
-        paymentIntent,
-        message: 'Booking created. Confirm payment on frontend.',
+        paymentOrder,
+        message: 'Booking created. Complete payment via Razorpay on frontend.',
       };
     }
 

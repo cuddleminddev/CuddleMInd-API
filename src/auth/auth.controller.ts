@@ -37,15 +37,11 @@ export class AuthController {
 
   @Post('register')
   async register(@Body() data: RegisterDto) {
-    try {
-      const response = await this.authService.register(data);
-      return this.responseService.successResponse(
-        'Successfully registered',
-        response,
-      );
-    } catch (error) {
-      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
-    }
+    const response = await this.authService.register(data);
+    return this.responseService.successResponse(
+      'Successfully registered',
+      response,
+    );
   }
 
   @Post('login')
@@ -58,11 +54,18 @@ export class AuthController {
           this.responseService.successResponse('Login successful', response),
         );
     } catch (error) {
-      return res
-        .status(HttpStatus.UNAUTHORIZED)
-        .json(
-          this.responseService.errorResponse(error, HttpStatus.UNAUTHORIZED),
-        );
+      // login uses @Res() so we must handle the response manually
+      const status =
+        error instanceof UnauthorizedException
+          ? HttpStatus.UNAUTHORIZED
+          : HttpStatus.BAD_REQUEST;
+      const message =
+        error instanceof Error ? error.message : 'Login failed';
+      return res.status(status).json({
+        status: false,
+        statusCode: status,
+        message,
+      });
     }
   }
 
@@ -83,7 +86,6 @@ export class AuthController {
     const expiry = new Date();
     expiry.setMinutes(expiry.getMinutes() + 10); // 10 min expiry
 
-    // Save to UserOtp table
     await this.prisma.userOtp.create({
       data: {
         userId: user.id,
@@ -114,9 +116,9 @@ export class AuthController {
       where: {
         userId: user.id,
         otpSecret: otp,
-        expiresAt: { gte: new Date() }, // Not expired
+        expiresAt: { gte: new Date() },
       },
-      orderBy: { createdAt: 'desc' }, // in case there are multiple
+      orderBy: { createdAt: 'desc' },
     });
 
     if (!validOtp) {
@@ -130,7 +132,6 @@ export class AuthController {
       data: { password: hashed },
     });
 
-    // Optionally: delete OTPs after use
     await this.prisma.userOtp.deleteMany({
       where: { userId: user.id },
     });
@@ -141,31 +142,19 @@ export class AuthController {
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   async getProfile(@Req() req: Request) {
-    try {
-      const user = await this.authService.validateUser((req.user as any).id);
-      return this.responseService.successResponse('User profile', user);
-    } catch (error) {
-      return this.responseService.errorResponse(error, HttpStatus.UNAUTHORIZED);
-    }
+    const user = await this.authService.validateUser((req.user as any).id);
+    return this.responseService.successResponse('User profile', user);
   }
 
   @Post('otp/send')
   async sendOtp(@Body() data: EmailDto) {
-    try {
-      const result = await this.authService.generateOtp(data.email);
-      return result;
-    } catch (error) {
-      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
-    }
+    const result = await this.authService.generateOtp(data.email);
+    return result;
   }
 
   @Post('otp/verify')
   async verifyOtp(@Body() data: OtpVerifyDto) {
-    try {
-      const result = await this.authService.validateOtp(data.email, data.otp);
-      return result;
-    } catch (error) {
-      return this.responseService.errorResponse(error, HttpStatus.BAD_REQUEST);
-    }
+    const result = await this.authService.validateOtp(data.email, data.otp);
+    return result;
   }
 }

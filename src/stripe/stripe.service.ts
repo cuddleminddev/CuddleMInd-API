@@ -4,7 +4,8 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import Stripe from 'stripe';
+import Razorpay from 'razorpay';
+import * as crypto from 'crypto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { BookingStatus, PaymentType, TransactionStatus } from '@prisma/client';
 import { BookingsService } from 'src/bookings/bookings.service';
@@ -12,7 +13,7 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class StripeService {
-  private stripe: Stripe;
+  private razorpay: Razorpay;
 
   constructor(
     private configService: ConfigService,
@@ -20,122 +21,104 @@ export class StripeService {
     @Inject(forwardRef(() => BookingsService))
     private bookingsService: BookingsService,
   ) {
-    const secret = this.configService.get<string>('STRIPE_SECRET_KEY');
-    this.stripe = new Stripe(secret, {
-      apiVersion: '2025-02-24.acacia',
+    this.razorpay = new Razorpay({
+      key_id: this.configService.get<string>('RAZORPAY_KEY_ID'),
+      key_secret: this.configService.get<string>('RAZORPAY_KEY_SECRET'),
     });
   }
 
+  /**
+   * Creates a Razorpay order (replaces Stripe PaymentIntent).
+   * Returns orderId + keyId so the frontend can open the Razorpay checkout SDK.
+   */
   async createPaymentIntent(
     userId: string,
     amount: number,
     type: PaymentType,
     metadata: Record<string, string>,
   ) {
-    const intent = await this.stripe.paymentIntents.create({
-      amount: amount * 100,
-      currency: 'inr',
-      metadata: {
+    const order = await this.razorpay.orders.create({
+      amount: Math.round(amount * 100), // Razorpay expects paise
+      currency: 'INR',
+      notes: {
         userId,
         type,
         ...metadata,
       },
-      automatic_payment_methods: {
-        enabled: true,
-        allow_redirects: 'never',
-      },
     });
 
     return {
-      clientSecret: intent.client_secret,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: this.configService.get<string>('RAZORPAY_KEY_ID'),
     };
   }
 
+  /**
+   * Verifies the Razorpay webhook signature and processes the payment event.
+   * Called from POST /webhook/razorpay.
+   */
   async handleWebhook(signature: string, payload: Buffer) {
-    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    let event: Stripe.Event;
-    try {
-      event = this.stripe.webhooks.constructEvent(
-        payload,
-        signature,
-        endpointSecret,
-      );
-    } catch (err) {
-      throw new BadRequestException(`Webhook Error: ${err.message}`);
+    const keySecret = this.configService.get<string>('RAZORPAY_KEY_SECRET');
+
+    const expectedSignature = crypto
+      .createHmac('sha256', keySecret)
+      .update(payload)
+      .digest('hex');
+
+    if (expectedSignature !== signature) {
+      throw new BadRequestException('Invalid Razorpay webhook signature');
     }
 
-    switch (event.type) {
-      case 'payment_intent.succeeded': {
-        const intent = event.data.object as Stripe.PaymentIntent;
-        await this.handleSuccessfulPaymentIntent(intent);
+    let event: any;
+    try {
+      event = JSON.parse(payload.toString());
+    } catch {
+      throw new BadRequestException('Invalid webhook payload');
+    }
+
+    const eventType: string = event.event;
+
+    switch (eventType) {
+      case 'payment.captured': {
+        const payment = event.payload?.payment?.entity;
+        if (payment) {
+          await this.handlePaymentCaptured(payment);
+        }
         break;
       }
 
-      case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await this.handleCheckoutSessionCompleted(session);
+      case 'payment.failed': {
+        const payment = event.payload?.payment?.entity;
+        if (payment) {
+          await this.handlePaymentFailed(payment);
+        }
         break;
       }
 
-      case 'invoice.payment_failed': {
-        const invoice = event.data.object as Stripe.Invoice;
-        await this.handleInvoicePaymentFailed(invoice);
-        break;
-      }
-
-      // Add more cases if needed
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        console.log(`Unhandled Razorpay event type: ${eventType}`);
     }
 
     return { received: true };
   }
 
-  private async handleCheckoutSessionCompleted(
-    session: Stripe.Checkout.Session,
-  ) {
-    const metadata = session.metadata;
-    if (!metadata) return;
+  /**
+   * Handles a successful Razorpay payment (replaces handleSuccessfulPaymentIntent).
+   */
+  private async handlePaymentCaptured(payment: any) {
+    console.log('✅ Razorpay payment captured:', payment.id);
 
-    const userId = metadata.userId;
-    const type = metadata.type as PaymentType;
-    const packageId = metadata.packageId;
-    const amount = Number(session.amount_total) / 100;
+    const notes = payment.notes || {};
+    const userId: string = notes.userId;
+    const type = notes.type as PaymentType;
+    const amount = Number(payment.amount) / 100;
 
-    await this.prisma.transaction.create({
-      data: {
-        userId,
-        amount,
-        status: TransactionStatus.success,
-        paymentType: type,
-      },
-    });
-
-    if (type === 'plan' && packageId) {
-      const start = new Date();
-      const end = new Date();
-      end.setMonth(end.getMonth() + 1);
-
-      await this.prisma.userPlan.create({
-        data: {
-          patientId: userId,
-          packageId,
-          bookingsPending: 4,
-          startDate: start,
-          endDate: end,
-          isActive: true,
-        },
-      });
+    if (!userId || !type) {
+      console.warn('⚠️ Missing userId or type in payment notes:', notes);
+      return;
     }
-  }
-
-  private async handleSuccessfulPaymentIntent(intent: Stripe.PaymentIntent) {
-    console.log('Payment intent success');
-
-    const metadata = intent.metadata;
-    const userId = metadata.userId;
-    const type = metadata.type as PaymentType;
-    const amount = Number(intent.amount) / 100;
 
     // Record the transaction
     await this.prisma.transaction.create({
@@ -148,9 +131,9 @@ export class StripeService {
     });
 
     // Handle plan payment (activate plan)
-    if (type === PaymentType.plan && metadata.userPlanId) {
+    if (type === PaymentType.plan && notes.userPlanId) {
       await this.prisma.userPlan.update({
-        where: { id: metadata.userPlanId },
+        where: { id: notes.userPlanId },
         data: {
           isActive: true,
           startDate: new Date(),
@@ -164,8 +147,8 @@ export class StripeService {
     }
 
     // Handle one-time booking payment
-    if (type === PaymentType.one_time && metadata.bookingId) {
-      const bookingId = metadata.bookingId;
+    if (type === PaymentType.one_time && notes.bookingId) {
+      const bookingId = notes.bookingId;
 
       const booking = await this.prisma.booking.findUnique({
         where: { id: bookingId },
@@ -184,7 +167,7 @@ export class StripeService {
         },
       });
 
-      // Add consultation session now
+      // Add consultation session
       await this.bookingsService.createConsultationSession(booking);
 
       // Mark doctor unavailable for the booked time
@@ -195,11 +178,18 @@ export class StripeService {
     }
   }
 
-  private async handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
-    const customerId = invoice.customer as string;
+  /**
+   * Handles a failed Razorpay payment.
+   */
+  private async handlePaymentFailed(payment: any) {
+    console.warn(`❌ Razorpay payment failed: ${payment.id}`);
 
-    console.warn(`Invoice payment failed for customer: ${customerId}`);
+    const notes = payment.notes || {};
+    const userId: string = notes.userId;
 
-    // Optionally notify user, deactivate plan, etc.
+    if (userId) {
+      console.warn(`Payment failure for user: ${userId}`);
+      // Optionally notify user or deactivate pending plan, etc.
+    }
   }
 }

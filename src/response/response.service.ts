@@ -11,11 +11,15 @@ export class ResponseService {
     };
   }
 
+  /**
+   * Throws an HttpException so that the global HttpExceptionFilter
+   * sends the correct HTTP status code on the response.
+   */
   errorResponse(
     error: string | Error | any,
     statusCode?: number,
     errors?: any,
-  ) {
+  ): never {
     let message = 'Something went wrong';
     let code = statusCode || HttpStatus.BAD_REQUEST;
 
@@ -24,18 +28,16 @@ export class ResponseService {
     } else if (error instanceof HttpException) {
       const response = error.getResponse() as any;
       message = response?.message || error.message;
-      code = error.getStatus();
+      code = statusCode ?? error.getStatus();
     } else if (error instanceof Error) {
       message = error.message;
     } else if (typeof error?.message === 'string') {
       message = error.message;
     }
 
-    return {
-      status: false,
-      message,
-      statusCode: code,
-      errors,
-    };
+    throw new HttpException(
+      { status: false, message, statusCode: code, errors },
+      code,
+    );
   }
 }
