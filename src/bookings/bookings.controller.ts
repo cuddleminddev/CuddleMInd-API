@@ -49,7 +49,7 @@ export class BookingsController {
     @Req() req: Request,
   ) {
     const clientId = (req.user as any).id;
-    const result = await this.bookingsService.creaate(createBookingDto, clientId);
+    const result = await this.bookingsService.create(createBookingDto, clientId);
     return this.responseService.successResponse(
       'Booking processed successfully.',
       result,
