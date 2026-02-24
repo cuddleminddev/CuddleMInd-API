@@ -135,7 +135,66 @@ export class BookingsService {
           '⚠️ No plan with available bookings found for client:',
           clientId,
         );
-        throw new BadRequestException('Plan usage limit reached');
+
+        // If the caller provided a packageId, auto-create a Razorpay order
+        // so the user can purchase a new plan without leaving the booking flow
+        const { packageId } = dto;
+        if (packageId) {
+          const planPackage = await this.prisma.planPackage.findUnique({
+            where: { id: packageId },
+          });
+
+          if (!planPackage || !planPackage.isActive) {
+            throw new BadRequestException(
+              'Plan not found or inactive. Please choose a valid plan.',
+            );
+          }
+
+          const startDate = new Date();
+          const endDate = new Date(startDate);
+          endDate.setDate(endDate.getDate() + planPackage.timePeriod);
+
+          const userPlan = await this.prisma.userPlan.create({
+            data: {
+              patientId,
+              packageId,
+              bookingsPending: planPackage.bookingFrequency,
+              startDate,
+              endDate,
+              isActive: false,
+            },
+          });
+
+          const paymentOrder = await this.stripeService.createPaymentIntent(
+            patientId,
+            Number(planPackage.amount),
+            PaymentType.plan,
+            {
+              packageId,
+              userId: patientId,
+              userPlanId: userPlan.id,
+              type: 'plan',
+            },
+          );
+
+          return {
+            requiresPlanPurchase: true,
+            message:
+              'No active plan available. Complete the payment to purchase a new plan, then retry booking.',
+            paymentOrder,
+            plan: {
+              id: planPackage.id,
+              name: planPackage.name,
+              amount: planPackage.amount,
+              bookingFrequency: planPackage.bookingFrequency,
+              timePeriod: planPackage.timePeriod,
+            },
+          };
+        }
+
+        throw new BadRequestException(
+          'No active plan with available bookings. Please provide a packageId to purchase a new plan.',
+        );
       }
 
       console.log('📦 Using plan:', selectedPlan);
