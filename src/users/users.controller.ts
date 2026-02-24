@@ -91,6 +91,7 @@ export class UsersController {
   }
 
   @Get('profile')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get current user profile' })
   async getProfile(@Request() req) {
     const user = await this.usersService.findOne(req.user.id);
@@ -119,6 +120,7 @@ export class UsersController {
   }
 
   @Patch('profile')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Update current user profile' })
   async updateProfile(@Request() req, @Body() updateUserDto: UpdateUserDto) {
     const user = await this.usersService.update(req.user.id, updateUserDto);
