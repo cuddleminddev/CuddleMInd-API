@@ -60,31 +60,49 @@ export class StripeService {
    * Called from POST /webhook/razorpay.
    */
   async handleWebhook(signature: string, payload: Buffer) {
+    console.log('\n========== [WEBHOOK] Incoming Razorpay Webhook ==========');
+    console.log('[WEBHOOK] Payload size (bytes):', payload?.length ?? 0);
+    console.log('[WEBHOOK] Received signature  :', signature);
+
     const keySecret = this.configService.get<string>('RAZORPAY_KEY_SECRET');
+    if (!keySecret) {
+      console.error('[WEBHOOK] ❌ RAZORPAY_KEY_SECRET is not set in environment!');
+      throw new BadRequestException('Server misconfiguration: missing Razorpay secret');
+    }
 
     const expectedSignature = crypto
       .createHmac('sha256', keySecret)
       .update(payload)
       .digest('hex');
 
+    console.log('[WEBHOOK] Expected signature  :', expectedSignature);
+
     if (expectedSignature !== signature) {
+      console.error('[WEBHOOK] ❌ Signature mismatch! Webhook rejected.');
       throw new BadRequestException('Invalid Razorpay webhook signature');
     }
+    console.log('[WEBHOOK] ✅ Signature verified.');
 
     let event: any;
     try {
       event = JSON.parse(payload.toString());
-    } catch {
+    } catch (err) {
+      console.error('[WEBHOOK] ❌ Failed to parse JSON payload:', err);
       throw new BadRequestException('Invalid webhook payload');
     }
 
     const eventType: string = event.event;
+    console.log('[WEBHOOK] Event type          :', eventType);
+    console.log('[WEBHOOK] Full event payload  :', JSON.stringify(event, null, 2));
 
     switch (eventType) {
       case 'payment.captured': {
         const payment = event.payload?.payment?.entity;
         if (payment) {
+          console.log('[WEBHOOK] Routing to handlePaymentCaptured, payment id:', payment.id);
           await this.handlePaymentCaptured(payment);
+        } else {
+          console.warn('[WEBHOOK] ⚠️  payment.captured event has no payment entity.');
         }
         break;
       }
@@ -92,15 +110,20 @@ export class StripeService {
       case 'payment.failed': {
         const payment = event.payload?.payment?.entity;
         if (payment) {
+          console.log('[WEBHOOK] Routing to handlePaymentFailed, payment id:', payment.id);
           await this.handlePaymentFailed(payment);
+        } else {
+          console.warn('[WEBHOOK] ⚠️  payment.failed event has no payment entity.');
         }
         break;
       }
 
       default:
-        console.log(`Unhandled Razorpay event type: ${eventType}`);
+        console.warn(`[WEBHOOK] ⚠️  Unhandled Razorpay event type: ${eventType}`);
     }
 
+    console.log('[WEBHOOK] ✅ Webhook handled successfully.');
+    console.log('========================================================\n');
     return { received: true };
   }
 
@@ -108,7 +131,11 @@ export class StripeService {
    * Handles a successful Razorpay payment (replaces handleSuccessfulPaymentIntent).
    */
   private async handlePaymentCaptured(payment: any) {
-    console.log('✅ Razorpay payment captured:', payment.id);
+    console.log('\n---------- [CAPTURED] Payment Captured ----------');
+    console.log('[CAPTURED] Payment ID   :', payment.id);
+    console.log('[CAPTURED] Amount (₹)  :', Number(payment.amount) / 100);
+    console.log('[CAPTURED] Status       :', payment.status);
+    console.log('[CAPTURED] Notes        :', JSON.stringify(payment.notes, null, 2));
 
     const notes = payment.notes || {};
     const userId: string = notes.userId;
@@ -116,12 +143,14 @@ export class StripeService {
     const amount = Number(payment.amount) / 100;
 
     if (!userId || !type) {
-      console.warn('⚠️ Missing userId or type in payment notes:', notes);
+      console.warn('[CAPTURED] ⚠️  Missing userId or type in payment notes. Aborting.', notes);
       return;
     }
+    console.log(`[CAPTURED] userId=${userId}  type=${type}  amount=₹${amount}`);
 
     // Record the transaction
-    await this.prisma.transaction.create({
+    console.log('[CAPTURED] Creating transaction record...');
+    const tx = await this.prisma.transaction.create({
       data: {
         userId,
         amount,
@@ -129,9 +158,11 @@ export class StripeService {
         paymentType: type,
       },
     });
+    console.log('[CAPTURED] ✅ Transaction created, id:', tx.id);
 
     // Handle plan payment (activate plan + confirm any pending booking)
     if (type === PaymentType.plan && notes.userPlanId) {
+      console.log('[CAPTURED] [PLAN] Activating userPlan:', notes.userPlanId);
       await this.prisma.userPlan.update({
         where: { id: notes.userPlanId },
         data: {
@@ -144,14 +175,17 @@ export class StripeService {
           })(),
         },
       });
+      console.log('[CAPTURED] [PLAN] ✅ UserPlan activated.');
 
       // If a booking was pre-created (no-plan flow), confirm it now
       if (notes.bookingId) {
+        console.log('[CAPTURED] [PLAN] Looking up pending booking:', notes.bookingId);
         const booking = await this.prisma.booking.findUnique({
           where: { id: notes.bookingId },
         });
 
         if (booking) {
+          console.log('[CAPTURED] [PLAN] Booking found, confirming...');
           await this.prisma.booking.update({
             where: { id: notes.bookingId },
             data: {
@@ -160,32 +194,44 @@ export class StripeService {
               userPlanId: notes.userPlanId,
             },
           });
+          console.log('[CAPTURED] [PLAN] ✅ Booking confirmed.');
 
           // Decrement the newly activated plan's bookingsPending
           await this.prisma.userPlan.update({
             where: { id: notes.userPlanId },
             data: { bookingsPending: { decrement: 1 } },
           });
+          console.log('[CAPTURED] [PLAN] ✅ bookingsPending decremented.');
 
           // Create consultation session for the confirmed booking
+          console.log('[CAPTURED] [PLAN] Creating consultation session...');
           await this.bookingsService.createConsultationSession(booking);
-
-          console.log('✅ Pending booking confirmed via plan purchase webhook:', notes.bookingId);
+          console.log('[CAPTURED] [PLAN] ✅ Consultation session created.');
+          console.log('[CAPTURED] [PLAN] ✅ Pending booking confirmed via plan purchase webhook:', notes.bookingId);
+        } else {
+          console.warn('[CAPTURED] [PLAN] ⚠️  Booking not found for id:', notes.bookingId);
         }
+      } else {
+        console.log('[CAPTURED] [PLAN] No bookingId in notes; skipping booking confirmation.');
       }
+    } else if (type === PaymentType.plan && !notes.userPlanId) {
+      console.warn('[CAPTURED] [PLAN] ⚠️  type=plan but no userPlanId in notes! Nothing to activate.');
     }
 
     // Handle one-time booking payment
     if (type === PaymentType.one_time && notes.bookingId) {
       const bookingId = notes.bookingId;
+      console.log('[CAPTURED] [ONE_TIME] Looking up booking:', bookingId);
 
       const booking = await this.prisma.booking.findUnique({
         where: { id: bookingId },
       });
 
       if (!booking) {
+        console.error('[CAPTURED] [ONE_TIME] ❌ Booking not found for ID:', bookingId);
         throw new Error(`Booking not found for ID: ${bookingId}`);
       }
+      console.log('[CAPTURED] [ONE_TIME] Booking found. Updating status to confirmed...');
 
       // Update the booking status to confirmed and mark as paid
       await this.prisma.booking.update({
@@ -195,30 +241,50 @@ export class StripeService {
           status: BookingStatus.confirmed,
         },
       });
+      console.log('[CAPTURED] [ONE_TIME] ✅ Booking confirmed.');
 
       // Add consultation session
+      console.log('[CAPTURED] [ONE_TIME] Creating consultation session...');
       await this.bookingsService.createConsultationSession(booking);
+      console.log('[CAPTURED] [ONE_TIME] ✅ Consultation session created.');
 
       // Mark doctor unavailable for the booked time
+      console.log('[CAPTURED] [ONE_TIME] Marking doctor unavailable, doctorId:', booking.doctorId);
       await this.bookingsService.markDoctorUnavailable(
         booking.doctorId,
         booking.scheduledAt,
       );
+      console.log('[CAPTURED] [ONE_TIME] ✅ Doctor marked unavailable.');
+    } else if (type === PaymentType.one_time && !notes.bookingId) {
+      console.warn('[CAPTURED] [ONE_TIME] ⚠️  type=one_time but no bookingId in notes!');
     }
+
+    console.log('---------- [CAPTURED] Done ----------\n');
   }
 
   /**
    * Handles a failed Razorpay payment.
    */
   private async handlePaymentFailed(payment: any) {
-    console.warn(`❌ Razorpay payment failed: ${payment.id}`);
+    console.log('\n---------- [FAILED] Payment Failed ----------');
+    console.log('[FAILED] Payment ID       :', payment.id);
+    console.log('[FAILED] Amount (₹)       :', Number(payment.amount) / 100);
+    console.log('[FAILED] Error code       :', payment.error_code);
+    console.log('[FAILED] Error description:', payment.error_description);
+    console.log('[FAILED] Error source     :', payment.error_source);
+    console.log('[FAILED] Error step       :', payment.error_step);
+    console.log('[FAILED] Error reason     :', payment.error_reason);
+    console.log('[FAILED] Notes            :', JSON.stringify(payment.notes, null, 2));
 
     const notes = payment.notes || {};
     const userId: string = notes.userId;
 
     if (userId) {
-      console.warn(`Payment failure for user: ${userId}`);
+      console.warn('[FAILED] ⚠️  Payment failure for userId:', userId);
       // Optionally notify user or deactivate pending plan, etc.
+    } else {
+      console.warn('[FAILED] ⚠️  No userId in notes, cannot associate failure with a user.');
     }
+    console.log('---------- [FAILED] Done ----------\n');
   }
 }
