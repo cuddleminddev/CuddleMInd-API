@@ -285,12 +285,14 @@ export class BookingsService {
     doctorId?: string;
     fromDate?: string;
     toDate?: string;
+    status?: string;
   }) {
-    const { patientId, doctorId, fromDate, toDate } = filter || {};
+    const { patientId, doctorId, fromDate, toDate, status } = filter || {};
     const where: any = {};
 
     if (patientId) where.patientId = patientId;
     if (doctorId) where.doctorId = doctorId;
+    if (status) where.status = status;
 
     if (fromDate || toDate) {
       const scheduledAt: any = {};

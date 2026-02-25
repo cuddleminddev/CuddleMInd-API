@@ -67,12 +67,14 @@ export class BookingsController {
     @Query('doctorId') doctorId?: string,
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
+    @Query('status') status?: string,
   ) {
     const bookings = await this.bookingsService.findAll({
       patientId,
       doctorId,
       fromDate,
       toDate,
+      status,
     });
     return this.responseService.successResponse(
       'Bookings retrieved successfully',
