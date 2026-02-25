@@ -130,7 +130,7 @@ export class StripeService {
       },
     });
 
-    // Handle plan payment (activate plan)
+    // Handle plan payment (activate plan + confirm any pending booking)
     if (type === PaymentType.plan && notes.userPlanId) {
       await this.prisma.userPlan.update({
         where: { id: notes.userPlanId },
@@ -144,6 +144,35 @@ export class StripeService {
           })(),
         },
       });
+
+      // If a booking was pre-created (no-plan flow), confirm it now
+      if (notes.bookingId) {
+        const booking = await this.prisma.booking.findUnique({
+          where: { id: notes.bookingId },
+        });
+
+        if (booking) {
+          await this.prisma.booking.update({
+            where: { id: notes.bookingId },
+            data: {
+              isPaid: true,
+              status: BookingStatus.confirmed,
+              userPlanId: notes.userPlanId,
+            },
+          });
+
+          // Decrement the newly activated plan's bookingsPending
+          await this.prisma.userPlan.update({
+            where: { id: notes.userPlanId },
+            data: { bookingsPending: { decrement: 1 } },
+          });
+
+          // Create consultation session for the confirmed booking
+          await this.bookingsService.createConsultationSession(booking);
+
+          console.log('✅ Pending booking confirmed via plan purchase webhook:', notes.bookingId);
+        }
+      }
     }
 
     // Handle one-time booking payment

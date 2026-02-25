@@ -137,7 +137,8 @@ export class BookingsService {
         );
 
         // If the caller provided a packageId, auto-create a Razorpay order
-        // so the user can purchase a new plan without leaving the booking flow
+        // AND create the booking immediately (pending) so it gets confirmed
+        // automatically by the webhook on payment — no retry needed.
         const { packageId } = dto;
         if (packageId) {
           const planPackage = await this.prisma.planPackage.findUnique({
@@ -154,6 +155,7 @@ export class BookingsService {
           const endDate = new Date(startDate);
           endDate.setDate(endDate.getDate() + planPackage.timePeriod);
 
+          // Create inactive UserPlan — activated by webhook on payment
           const userPlan = await this.prisma.userPlan.create({
             data: {
               patientId,
@@ -165,6 +167,28 @@ export class BookingsService {
             },
           });
 
+          // Create the booking immediately (pending) so the webhook confirms it
+          const pendingBooking = await this.prisma.booking.create({
+            data: {
+              doctorId: assignedDoctorId,
+              patientId,
+              scheduledAt: new Date(scheduledAt),
+              type,
+              paymentType,
+              isPaid: false,
+              userPlanId: userPlan.id,
+              amount: consultationCharge,
+              status: BookingStatus.pending,
+              sessionType,
+            },
+            include: { doctor: true },
+          });
+
+          await this.markDoctorUnavailable(
+            assignedDoctorId,
+            new Date(scheduledAt),
+          );
+
           const paymentOrder = await this.stripeService.createPaymentIntent(
             patientId,
             Number(planPackage.amount),
@@ -173,6 +197,7 @@ export class BookingsService {
               packageId,
               userId: patientId,
               userPlanId: userPlan.id,
+              bookingId: pendingBooking.id, // ← webhook uses this to confirm booking
               type: 'plan',
             },
           );
@@ -180,7 +205,8 @@ export class BookingsService {
           return {
             requiresPlanPurchase: true,
             message:
-              'No active plan available. Complete the payment to purchase a new plan, then retry booking.',
+              'No active plan available. Complete the plan payment — your booking will be confirmed automatically.',
+            booking: pendingBooking,
             paymentOrder,
             plan: {
               id: planPackage.id,
