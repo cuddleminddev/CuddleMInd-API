@@ -63,12 +63,21 @@ export class BookingsController {
     description: 'List of bookings retrieved successfully.',
   })
   async listBookings(
+    @Req() req: Request,
     @Query('patientId') patientId?: string,
     @Query('doctorId') doctorId?: string,
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
     @Query('status') status?: string,
   ) {
+    const user = req.user as { id: string; role: string } | undefined;
+
+    // Clients can only see their own confirmed bookings
+    if (user?.role === 'client') {
+      patientId = user.id;
+      status = 'confirmed';
+    }
+
     const bookings = await this.bookingsService.findAll({
       patientId,
       doctorId,
