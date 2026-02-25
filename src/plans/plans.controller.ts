@@ -26,6 +26,7 @@ import {
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { OptionalJwtAuthGuard } from 'src/auth/guards/optional-jwt-auth.guard';
 import { ResponseService } from 'src/response/response.service';
 import { StripeService } from 'src/stripe/stripe.service';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -41,10 +42,14 @@ export class PlansController {
   ) {}
 
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'List all active plans' })
   @ApiResponse({ status: 200, description: 'List of plans' })
-  async findAll() {
-    const plans = await this.planService.findAll();
+  async findAll(@Req() req: any) {
+    const user = req.user;
+    const clientId =
+      user && user.role?.toLowerCase() === 'client' ? user.id : undefined;
+    const plans = await this.planService.findAll(clientId);
     return this.responseService.successResponse(
       'Plans fetched successfully',
       plans,

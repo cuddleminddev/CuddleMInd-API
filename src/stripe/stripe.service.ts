@@ -208,6 +208,13 @@ export class StripeService {
           console.log('[CAPTURED] [PLAN] Creating consultation session...');
           await this.bookingsService.createConsultationSession(booking);
           console.log('[CAPTURED] [PLAN] ✅ Consultation session created.');
+
+          // Mark doctor unavailable now that booking is confirmed
+          await this.bookingsService.markDoctorUnavailable(
+            booking.doctorId,
+            booking.scheduledAt,
+          );
+          console.log('[CAPTURED] [PLAN] ✅ Doctor marked unavailable.');
           console.log('[CAPTURED] [PLAN] ✅ Pending booking confirmed via plan purchase webhook:', notes.bookingId);
         } else {
           console.warn('[CAPTURED] [PLAN] ⚠️  Booking not found for id:', notes.bookingId);

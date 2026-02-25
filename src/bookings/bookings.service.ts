@@ -118,7 +118,7 @@ export class BookingsService {
 
       console.log('💳 Razorpay order created:', paymentOrder);
 
-      await this.markDoctorUnavailable(assignedDoctorId, new Date(scheduledAt));
+      // Doctor will be marked unavailable only when booking is confirmed via webhook
 
       return {
         booking,
@@ -184,10 +184,7 @@ export class BookingsService {
             include: { doctor: true },
           });
 
-          await this.markDoctorUnavailable(
-            assignedDoctorId,
-            new Date(scheduledAt),
-          );
+          // Doctor will be marked unavailable only when booking is confirmed via webhook
 
           const paymentOrder = await this.stripeService.createPaymentIntent(
             patientId,

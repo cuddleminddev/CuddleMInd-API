@@ -14,10 +14,36 @@ export class PlansService {
     });
   }
 
-  async findAll() {
-    return this.prisma.planPackage.findMany({
+  async findAll(clientId?: string) {
+    const plans = await this.prisma.planPackage.findMany({
       where: { isActive: true },
       orderBy: { createdAt: 'desc' },
+    });
+
+    if (!clientId) return plans;
+
+    // Fetch all active, valid UserPlans for this client in one query
+    const now = new Date();
+    const userPlans = await this.prisma.userPlan.findMany({
+      where: {
+        patientId: clientId,
+        isActive: true,
+        endDate: { gte: now },
+      },
+    });
+
+    // Build a map: packageId -> UserPlan
+    const userPlanMap = new Map(
+      userPlans.map((up) => [up.packageId, up]),
+    );
+
+    return plans.map((plan) => {
+      const userPlan = userPlanMap.get(plan.id);
+      return {
+        ...plan,
+        alreadyPurchased: !!userPlan,
+        pendingBookingCount: userPlan ? userPlan.bookingsPending : 0,
+      };
     });
   }
 
