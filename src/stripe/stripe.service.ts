@@ -64,14 +64,15 @@ export class StripeService {
     console.log('[WEBHOOK] Payload size (bytes):', payload?.length ?? 0);
     console.log('[WEBHOOK] Received signature  :', signature);
 
-    const keySecret = this.configService.get<string>('RAZORPAY_KEY_SECRET');
-    if (!keySecret) {
-      console.error('[WEBHOOK] ❌ RAZORPAY_KEY_SECRET is not set in environment!');
-      throw new BadRequestException('Server misconfiguration: missing Razorpay secret');
+    const webhookSecret = this.configService.get<string>('RAZORPAY_WEBHOOK_SECRET');
+    if (!webhookSecret) {
+      console.error('[WEBHOOK] ❌ RAZORPAY_WEBHOOK_SECRET is not set in environment!');
+      throw new BadRequestException('Server misconfiguration: missing Razorpay webhook secret');
     }
+    console.log('[WEBHOOK] Using RAZORPAY_WEBHOOK_SECRET (first 6):', webhookSecret.slice(0, 6) + '******');
 
     const expectedSignature = crypto
-      .createHmac('sha256', keySecret)
+      .createHmac('sha256', webhookSecret)
       .update(payload)
       .digest('hex');
 
