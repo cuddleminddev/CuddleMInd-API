@@ -39,7 +39,7 @@ export class PlansController {
     private readonly responseService: ResponseService,
     private readonly stripeService: StripeService,
     private readonly prisma: PrismaService,
-  ) {}
+  ) { }
 
   @Get()
   @UseGuards(OptionalJwtAuthGuard)

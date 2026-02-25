@@ -6,7 +6,7 @@ import { UserPlan } from '@prisma/client';
 
 @Injectable()
 export class PlansService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(createPlanDto: CreatePlanDto) {
     return this.prisma.planPackage.create({

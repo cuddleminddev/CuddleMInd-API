@@ -397,7 +397,7 @@ export class BookingsService {
   // Assign available doctor
   async assignAvailableDoctor(scheduledAt: Date): Promise<string> {
     const scheduledStart = dayjs(scheduledAt).utc();
-    const scheduledEnd = scheduledStart.add(30, 'minute');
+    const scheduledEnd = scheduledStart.add(SESSION_DURATION_MS, 'millisecond');
     const dayOfWeek = scheduledStart.day();
 
     const scheduledTimeStart = new Date(
@@ -407,6 +407,15 @@ export class BookingsService {
       Date.UTC(1970, 0, 1, scheduledEnd.hour(), scheduledEnd.minute()),
     );
 
+    // Start of the overlap window: any booking that started within
+    // (scheduledStart - sessionDuration, scheduledEnd) would overlap with
+    // the requested slot.  Using "gte scheduledStart - duration" means a
+    // back-to-back booking (ends exactly at scheduledStart) is allowed.
+    const overlapWindowStart = scheduledStart
+      .subtract(SESSION_DURATION_MS, 'millisecond')
+      .add(1, 'millisecond')
+      .toDate();
+
     console.log('🕒 Finding doctor for:', scheduledStart.toISOString());
 
     const doctors = await this.prisma.user.findMany({
@@ -414,11 +423,13 @@ export class BookingsService {
         role: { name: 'doctor' },
         bookingsAsDoctor: {
           none: {
+            // Only confirmed (paid) bookings lock the slot — pending bookings
+            // do not block assignment until payment is completed.
             scheduledAt: {
-              gte: scheduledStart.toDate(),
+              gte: overlapWindowStart,
               lt: scheduledEnd.toDate(),
             },
-            status: { in: ['pending', 'confirmed'] },
+            status: 'confirmed',
           },
         },
         doctorUnavailabilities: {
@@ -453,8 +464,8 @@ export class BookingsService {
 
   // Mark unavailability
   async markDoctorUnavailable(doctorId: string, scheduledAt: Date) {
-    const slotStart = dayjs(scheduledAt);
-    const slotEnd = slotStart.add(30, 'minute');
+    const slotStart = dayjs(scheduledAt).utc();
+    const slotEnd = slotStart.add(SESSION_DURATION_MS, 'millisecond');
 
     console.log('🛑 Marking unavailable:', {
       doctorId,
@@ -478,7 +489,7 @@ export class BookingsService {
     const created = await this.prisma.doctorUnavailability.create({
       data: {
         doctorId,
-        date: slotStart.startOf('day').toDate(),
+        date: slotStart.utc().startOf('day').toDate(),
         startTime: slotStart.toDate(),
         endTime: slotEnd.toDate(),
         reason: 'Booked session',
