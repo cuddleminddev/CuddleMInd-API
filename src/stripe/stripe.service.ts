@@ -10,7 +10,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { BookingStatus, PaymentType, TransactionStatus } from '@prisma/client';
 import { BookingsService } from 'src/bookings/bookings.service';
 import { ConfigService } from '@nestjs/config';
-import { ChatGateway } from 'src/chat/chat.gateway';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class StripeService {
@@ -21,8 +21,7 @@ export class StripeService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => BookingsService))
     private bookingsService: BookingsService,
-    @Inject(forwardRef(() => ChatGateway))
-    private chatGateway: ChatGateway,
+    private eventEmitter: EventEmitter2,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_KEY_ID'),
@@ -219,8 +218,10 @@ export class StripeService {
           );
           console.log('[CAPTURED] [PLAN] ✅ Doctor marked unavailable.');
 
-          // Notify patient via WebSocket
-          this.chatGateway.notifyPaymentResult(booking.patientId, 'confirmed', booking.id, {
+          // Notify patient via WebSocket (decoupled through EventEmitter)
+          this.eventEmitter.emit('payment.confirmed', {
+            patientId: booking.patientId,
+            bookingId: booking.id,
             scheduledAt: booking.scheduledAt,
             doctorId: booking.doctorId,
           });
@@ -273,12 +274,14 @@ export class StripeService {
       );
       console.log('[CAPTURED] [ONE_TIME] ✅ Doctor marked unavailable.');
 
-      // Notify patient via WebSocket
-      this.chatGateway.notifyPaymentResult(booking.patientId, 'confirmed', bookingId, {
+      // Notify patient via WebSocket (decoupled through EventEmitter)
+      this.eventEmitter.emit('payment.confirmed', {
+        patientId: booking.patientId,
+        bookingId: bookingId,
         scheduledAt: booking.scheduledAt,
         doctorId: booking.doctorId,
       });
-      console.log('[CAPTURED] [ONE_TIME] ✅ Patient notified via WebSocket.');
+      console.log('[CAPTURED] [ONE_TIME] ✅ payment.confirmed event emitted.');
     } else if (type === PaymentType.one_time && !notes.bookingId) {
       console.warn('[CAPTURED] [ONE_TIME] ⚠️  type=one_time but no bookingId in notes!');
     }
@@ -314,11 +317,13 @@ export class StripeService {
         });
         console.log('[FAILED] ✅ Booking marked as failed:', bookingId);
 
-        // Notify patient via WebSocket
-        this.chatGateway.notifyPaymentResult(booking.patientId, 'failed', bookingId, {
+        // Notify patient via WebSocket (decoupled through EventEmitter)
+        this.eventEmitter.emit('payment.failed', {
+          patientId: booking.patientId,
+          bookingId,
           reason: payment.error_description || payment.error_reason || 'Payment failed',
         });
-        console.log('[FAILED] ✅ Patient notified via WebSocket.');
+        console.log('[FAILED] ✅ payment.failed event emitted.');
       }
     }
 

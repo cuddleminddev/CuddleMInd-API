@@ -8,6 +8,7 @@ import {
   OnGatewayDisconnect,
   ConnectedSocket,
 } from '@nestjs/websockets';
+import { OnEvent } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -392,13 +393,53 @@ export class ChatGateway
   }
 
   /**
-   * Emits payment result to the patient's socket.
-   * Called by StripeService after a webhook confirms or fails a payment.
-   *
-   * Events emitted to patient:
-   *   payment_confirmed  – booking confirmed, session is ready
-   *   payment_failed     – payment failed, booking cancelled
+   * Called by StripeService (via EventEmitter) when a payment is confirmed.
+   * Emits `payment_confirmed` to the patient's socket.
    */
+  @OnEvent('payment.confirmed')
+  handlePaymentConfirmed(payload: {
+    patientId: string;
+    bookingId: string;
+    scheduledAt: Date;
+    doctorId: string;
+  }) {
+    const patientSocket = this.patients.get(payload.patientId);
+    if (!patientSocket) {
+      console.warn(`⚠️ [payment.confirmed] Patient ${payload.patientId} not connected`);
+      return;
+    }
+    patientSocket.emit('payment_confirmed', {
+      bookingId: payload.bookingId,
+      status: 'confirmed',
+      scheduledAt: payload.scheduledAt,
+      doctorId: payload.doctorId,
+    });
+    console.log(`🔔 [payment.confirmed] Emitted to patient ${payload.patientId}`);
+  }
+
+  /**
+   * Called by StripeService (via EventEmitter) when a payment fails.
+   * Emits `payment_failed` to the patient's socket.
+   */
+  @OnEvent('payment.failed')
+  handlePaymentFailed(payload: {
+    patientId: string;
+    bookingId: string;
+    reason: string;
+  }) {
+    const patientSocket = this.patients.get(payload.patientId);
+    if (!patientSocket) {
+      console.warn(`⚠️ [payment.failed] Patient ${payload.patientId} not connected`);
+      return;
+    }
+    patientSocket.emit('payment_failed', {
+      bookingId: payload.bookingId,
+      status: 'failed',
+      reason: payload.reason,
+    });
+    console.log(`🔔 [payment.failed] Emitted to patient ${payload.patientId}`);
+  }
+
   notifyPaymentResult(
     patientId: string,
     status: 'confirmed' | 'failed',

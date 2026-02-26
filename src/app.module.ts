@@ -1,6 +1,7 @@
 // src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -27,6 +28,7 @@ import { ContactUsModule } from './contact-us/contact-us.module';
       isGlobal: true,
       envFilePath: `.env${process.env.NODE_ENV === 'test' ? '.test' : ''}`,
     }),
+    EventEmitterModule.forRoot(),
     ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
