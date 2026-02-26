@@ -22,13 +22,16 @@ export class PlansService {
 
     if (!clientId) return plans;
 
-    // Fetch all active, valid UserPlans for this client in one query
+    // Fetch all active, valid UserPlans for this client in one query.
+    // A plan is considered "purchased & valid" only when it is active,
+    // not yet expired, AND still has bookings remaining.
     const now = new Date();
     const userPlans = await this.prisma.userPlan.findMany({
       where: {
         patientId: clientId,
         isActive: true,
         endDate: { gte: now },
+        bookingsPending: { gt: 0 },
       },
     });
 
