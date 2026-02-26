@@ -128,7 +128,38 @@ export class BookingsService {
     }
 
     if (paymentType === PaymentType.plan) {
-      const selectedPlan = activePlans.find((p) => p.bookingsPending > 0);
+      // If caller specifies a userPlanId, use that exact plan.
+      // Otherwise fall back to the first active plan with remaining bookings.
+      const { userPlanId: requestedPlanId } = dto;
+
+      let selectedPlan = requestedPlanId
+        ? activePlans.find((p) => p.id === requestedPlanId)
+        : activePlans.find((p) => p.bookingsPending > 0);
+
+      if (requestedPlanId && !selectedPlan) {
+        // May not be in activePlans cache if it was just activated — fetch directly
+        const directPlan = await this.prisma.userPlan.findFirst({
+          where: {
+            id: requestedPlanId,
+            patientId: clientId,
+            isActive: true,
+            endDate: { gte: new Date() },
+          },
+          include: { package: true },
+        });
+        if (!directPlan) {
+          throw new BadRequestException(
+            'The specified subscription plan is not valid or does not belong to you.',
+          );
+        }
+        selectedPlan = directPlan as any;
+      }
+
+      if (selectedPlan && selectedPlan.bookingsPending <= 0) {
+        throw new BadRequestException(
+          'The selected subscription has no bookings remaining.',
+        );
+      }
 
       if (!selectedPlan) {
         console.warn(

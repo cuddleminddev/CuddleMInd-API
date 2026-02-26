@@ -49,4 +49,13 @@ export class CreateBookingDto {
   @IsString()
   @IsOptional()
   packageId?: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'UserPlan ID to use for this booking. When provided the booking is charged against that specific subscription.',
+  })
+  @IsUUID()
+  @IsOptional()
+  userPlanId?: string;
 }
