@@ -10,6 +10,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { BookingStatus, PaymentType, TransactionStatus } from '@prisma/client';
 import { BookingsService } from 'src/bookings/bookings.service';
 import { ConfigService } from '@nestjs/config';
+import { ChatGateway } from 'src/chat/chat.gateway';
 
 @Injectable()
 export class StripeService {
@@ -20,6 +21,8 @@ export class StripeService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => BookingsService))
     private bookingsService: BookingsService,
+    @Inject(forwardRef(() => ChatGateway))
+    private chatGateway: ChatGateway,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_KEY_ID'),
@@ -215,6 +218,12 @@ export class StripeService {
             booking.scheduledAt,
           );
           console.log('[CAPTURED] [PLAN] ✅ Doctor marked unavailable.');
+
+          // Notify patient via WebSocket
+          this.chatGateway.notifyPaymentResult(booking.patientId, 'confirmed', booking.id, {
+            scheduledAt: booking.scheduledAt,
+            doctorId: booking.doctorId,
+          });
           console.log('[CAPTURED] [PLAN] ✅ Pending booking confirmed via plan purchase webhook:', notes.bookingId);
         } else {
           console.warn('[CAPTURED] [PLAN] ⚠️  Booking not found for id:', notes.bookingId);
@@ -263,6 +272,13 @@ export class StripeService {
         booking.scheduledAt,
       );
       console.log('[CAPTURED] [ONE_TIME] ✅ Doctor marked unavailable.');
+
+      // Notify patient via WebSocket
+      this.chatGateway.notifyPaymentResult(booking.patientId, 'confirmed', bookingId, {
+        scheduledAt: booking.scheduledAt,
+        doctorId: booking.doctorId,
+      });
+      console.log('[CAPTURED] [ONE_TIME] ✅ Patient notified via WebSocket.');
     } else if (type === PaymentType.one_time && !notes.bookingId) {
       console.warn('[CAPTURED] [ONE_TIME] ⚠️  type=one_time but no bookingId in notes!');
     }
@@ -286,10 +302,37 @@ export class StripeService {
 
     const notes = payment.notes || {};
     const userId: string = notes.userId;
+    const bookingId: string = notes.bookingId;
+
+    // Mark booking as failed and notify patient
+    if (bookingId) {
+      const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+      if (booking && booking.status === BookingStatus.pending) {
+        await this.prisma.booking.update({
+          where: { id: bookingId },
+          data: { status: BookingStatus.failed },
+        });
+        console.log('[FAILED] ✅ Booking marked as failed:', bookingId);
+
+        // Notify patient via WebSocket
+        this.chatGateway.notifyPaymentResult(booking.patientId, 'failed', bookingId, {
+          reason: payment.error_description || payment.error_reason || 'Payment failed',
+        });
+        console.log('[FAILED] ✅ Patient notified via WebSocket.');
+      }
+    }
+
+    // Also deactivate any inactive UserPlan that was pre-created for this payment
+    if (notes.userPlanId) {
+      await this.prisma.userPlan.updateMany({
+        where: { id: notes.userPlanId, isActive: false },
+        data: { isActive: false }, // already false; entry left for auditing
+      });
+      console.log('[FAILED] ℹ️  UserPlan left inactive (not activated):', notes.userPlanId);
+    }
 
     if (userId) {
       console.warn('[FAILED] ⚠️  Payment failure for userId:', userId);
-      // Optionally notify user or deactivate pending plan, etc.
     } else {
       console.warn('[FAILED] ⚠️  No userId in notes, cannot associate failure with a user.');
     }

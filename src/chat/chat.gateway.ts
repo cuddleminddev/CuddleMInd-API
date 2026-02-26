@@ -170,7 +170,9 @@ export class ChatGateway
       sessionId,
       doctor,
       booking: bookingResult.booking || bookingResult,
-      paymentIntent: bookingResult.paymentIntent || null,
+      // bookingService.create returns `paymentOrder` for one_time payments.
+      // It contains { orderId, amount, currency, keyId } needed by Razorpay SDK.
+      paymentOrder: bookingResult.paymentOrder ?? null,
     };
 
     console.log('📤 Emitting receive_doctor_card to patient socket:', {
@@ -387,5 +389,31 @@ export class ChatGateway
     } else {
       console.warn(`⚠️ Doctor ${doctorId} not connected via WebSocket`);
     }
+  }
+
+  /**
+   * Emits payment result to the patient's socket.
+   * Called by StripeService after a webhook confirms or fails a payment.
+   *
+   * Events emitted to patient:
+   *   payment_confirmed  – booking confirmed, session is ready
+   *   payment_failed     – payment failed, booking cancelled
+   */
+  notifyPaymentResult(
+    patientId: string,
+    status: 'confirmed' | 'failed',
+    bookingId: string,
+    extra?: Record<string, any>,
+  ) {
+    const patientSocket = this.patients.get(patientId);
+    if (!patientSocket) {
+      console.warn(`⚠️ [notify] Patient ${patientId} not connected — cannot push payment result`);
+      return;
+    }
+
+    const event = status === 'confirmed' ? 'payment_confirmed' : 'payment_failed';
+    const payload = { bookingId, status, ...extra };
+    patientSocket.emit(event, payload);
+    console.log(`🔔 [notify] Emitted '${event}' to patient ${patientId}:`, payload);
   }
 }
