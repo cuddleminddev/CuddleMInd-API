@@ -7,6 +7,7 @@ import {
   getDay,
   addMinutes,
   isBefore,
+  isAfter,
   set,
 } from 'date-fns';
 import { zonedTimeToUtc, format, utcToZonedTime } from 'date-fns-tz';
@@ -102,10 +103,11 @@ export class TimeSlotsService {
 
       let current = new Date(startTime);
 
-      while (
-        isBefore(addMinutes(current, slotDuration), endTime) ||
-        +current === +endTime
-      ) {
+      // Enter the loop as long as a full-duration slot fits within the window
+      // (current + slotDuration <= endTime).  The previous condition used
+      // isBefore(...) which is strictly less-than and therefore always skipped
+      // the last slot when current + slotDuration === endTime.
+      while (!isAfter(addMinutes(current, slotDuration), endTime)) {
         const intervalStart = new Date(current);
         const intervalEnd = addMinutes(intervalStart, slotDuration);
         current = intervalEnd;
