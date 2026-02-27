@@ -2,11 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
-  startOfDay,
-  endOfDay,
-  getDay,
   addMinutes,
-  isBefore,
   isAfter,
   set,
 } from 'date-fns';
@@ -34,8 +30,23 @@ export class TimeSlotsService {
   }
 
   async getAvailableTimeslots(dateString: string, doctorId?: string) {
-    const date = new Date(dateString);
-    const dayOfWeek = getDay(date); // Sunday = 0, Saturday = 6
+    // Always work in UTC so that dayOfWeek, startOfDay, and endOfDay are
+    // consistent regardless of the server's local timezone.
+    const dateUtc = new Date(dateString); // e.g. "2026-03-01" → 2026-03-01T00:00:00.000Z
+    const dayOfWeek = dateUtc.getUTCDay(); // UTC day-of-week (0=Sun … 6=Sat)
+
+    const utcDayStart = new Date(Date.UTC(
+      dateUtc.getUTCFullYear(),
+      dateUtc.getUTCMonth(),
+      dateUtc.getUTCDate(),
+      0, 0, 0, 0,
+    ));
+    const utcDayEnd = new Date(Date.UTC(
+      dateUtc.getUTCFullYear(),
+      dateUtc.getUTCMonth(),
+      dateUtc.getUTCDate(),
+      23, 59, 59, 999,
+    ));
 
     const timeslotWhere: any = {
       dayOfWeek,
@@ -48,8 +59,8 @@ export class TimeSlotsService {
 
     const bookingWhere: any = {
       scheduledAt: {
-        gte: startOfDay(date),
-        lte: endOfDay(date),
+        gte: utcDayStart,
+        lte: utcDayEnd,
       },
       status: { in: ['pending', 'confirmed'] },
     };
@@ -58,8 +69,11 @@ export class TimeSlotsService {
       bookingWhere.doctorId = doctorId;
     }
 
+    // Use a range instead of an exact date match so that any small timestamp
+    // difference never silently drops unavailability records.
     const unavailabilityWhere: any = {
-      date,
+      startTime: { lt: utcDayEnd },
+      endTime:   { gt: utcDayStart },
     };
 
     if (doctorId) {
@@ -76,79 +90,86 @@ export class TimeSlotsService {
 
     const slotDuration = 30; // minutes
 
-    // Use a Map keyed on interval start ISO string so that when multiple doctors
-    // cover the same time window, the slot appears only once in the output — but
-    // a booking / unavailability for Doctor A does NOT hide the slot for Doctor B.
-    const availableIntervalsMap = new Map<string, { start: Date; end: Date }>();
+    // Track per interval: the list of free doctors for that time.
+    // The slot appears in the output as long as freeDoctors.length > 0.
+    // A booking / unavailability for Doctor A does NOT block Doctor B.
+    const intervalDoctorCountMap = new Map<
+      string,
+      { start: Date; end: Date; freeDoctors: Set<string> }
+    >();
 
     for (const slot of timeslots) {
       const slotDoctorId = slot.doctorId;
 
-      // Apply the saved UTC times to the selected date
-      const startTime = new Date(date);
-      startTime.setUTCHours(
+      // Build the interval boundaries for this date in UTC.
+      const startTime = new Date(Date.UTC(
+        dateUtc.getUTCFullYear(),
+        dateUtc.getUTCMonth(),
+        dateUtc.getUTCDate(),
         slot.startTime.getUTCHours(),
         slot.startTime.getUTCMinutes(),
-        0,
-        0,
-      );
+        0, 0,
+      ));
 
-      const endTime = new Date(date);
-      endTime.setUTCHours(
+      const endTime = new Date(Date.UTC(
+        dateUtc.getUTCFullYear(),
+        dateUtc.getUTCMonth(),
+        dateUtc.getUTCDate(),
         slot.endTime.getUTCHours(),
         slot.endTime.getUTCMinutes(),
-        0,
-        0,
-      );
+        0, 0,
+      ));
 
       let current = new Date(startTime);
 
-      // Enter the loop as long as a full-duration slot fits within the window
-      // (current + slotDuration <= endTime).  The previous condition used
-      // isBefore(...) which is strictly less-than and therefore always skipped
-      // the last slot when current + slotDuration === endTime.
+      // Include a slot as long as a full 30-min interval fits (<=, not <).
       while (!isAfter(addMinutes(current, slotDuration), endTime)) {
         const intervalStart = new Date(current);
         const intervalEnd = addMinutes(intervalStart, slotDuration);
         current = intervalEnd;
 
-        // Only check bookings that belong to THIS doctor — another doctor's
-        // booking at the same time must not hide this slot.
-        const overlapsBooking = bookings.some((b) => {
+        const key = intervalStart.toISOString();
+
+        // Check whether THIS doctor is blocked at this interval.
+        const isBookingOverlap = bookings.some((b) => {
           if (b.doctorId !== slotDoctorId) return false;
           const bTime = b.scheduledAt.getTime();
           return (
-            bTime >= intervalStart.getTime() && bTime < intervalEnd.getTime()
+            bTime < intervalEnd.getTime() &&
+            bTime + slotDuration * 60_000 > intervalStart.getTime()
           );
         });
 
-        // Same for unavailability records — scope check to this doctor.
-        const overlapsUnavailability = unavailabilities.some((u) => {
+        const isUnavailabilityOverlap = unavailabilities.some((u) => {
           if (u.doctorId !== slotDoctorId) return false;
           return (
             intervalStart < new Date(u.endTime) &&
-            intervalEnd > new Date(u.startTime)
+            intervalEnd   > new Date(u.startTime)
           );
         });
 
-        if (!overlapsBooking && !overlapsUnavailability) {
-          const key = intervalStart.toISOString();
-          if (!availableIntervalsMap.has(key)) {
-            availableIntervalsMap.set(key, {
+        // If this doctor is free, register them against this interval key.
+        if (!isBookingOverlap && !isUnavailabilityOverlap) {
+          if (!intervalDoctorCountMap.has(key)) {
+            intervalDoctorCountMap.set(key, {
               start: intervalStart,
               end: intervalEnd,
+              freeDoctors: new Set(),
             });
           }
+          intervalDoctorCountMap.get(key)!.freeDoctors.add(slotDoctorId);
         }
       }
     }
 
-    // Return ISO UTC strings for frontend
-    return Array.from(availableIntervalsMap.values())
+    // Return ISO UTC strings for frontend.
+    // availableCount = number of doctors who can still take this slot.
+    return Array.from(intervalDoctorCountMap.values())
       .sort((a, b) => a.start.getTime() - b.start.getTime())
-      .map(({ start, end }) => ({
+      .map(({ start, end, freeDoctors }) => ({
         start: start.toISOString(),
         end: end.toISOString(),
+        availableCount: freeDoctors.size,
       }));
   }
 
