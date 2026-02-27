@@ -71,6 +71,7 @@ model User {
   status         UserStatus @default(active) @map("status")
   roleId         String     @map("role_id")
   profilePicture String?    @map("profile_picture")
+  isOnline       Boolean    @default(false) @map("is_online")
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
   password       String?    @map("password")

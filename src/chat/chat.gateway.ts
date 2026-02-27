@@ -352,14 +352,44 @@ export class ChatGateway
   }
 
   @SubscribeMessage('get_connected_doctors')
-  handleGetConnectedDoctors(@ConnectedSocket() client: Socket) {
-    const connectedDoctorIds = Array.from(this.doctors.keys());
-    client.emit('connected_doctors_list', connectedDoctorIds);
+  async handleGetConnectedDoctors(@ConnectedSocket() client: Socket) {
+    const doctors = await this.buildDoctorList();
+    client.emit('connected_doctors_list', doctors);
   }
 
-  private broadcastDoctorList() {
+  private async buildDoctorList() {
     const connectedDoctorIds = Array.from(this.doctors.keys());
-    this.server.emit('connected_doctors_list', connectedDoctorIds);
+    if (connectedDoctorIds.length === 0) return [];
+
+    const doctors = await this.prisma.user.findMany({
+      where: { id: { in: connectedDoctorIds }, status: 'active' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        profilePicture: true,
+        doctorProfile: {
+          select: {
+            audioConsultationCharge: true,
+            videoConsultationCharge: true,
+          },
+        },
+      },
+    });
+
+    return doctors.map((d) => ({
+      id: d.id,
+      name: d.name,
+      email: d.email,
+      profilePicture: d.profilePicture,
+      audioConsultationCharge: d.doctorProfile?.audioConsultationCharge ?? null,
+      videoConsultationCharge: d.doctorProfile?.videoConsultationCharge ?? null,
+    }));
+  }
+
+  private async broadcastDoctorList() {
+    const doctors = await this.buildDoctorList();
+    this.server.emit('connected_doctors_list', doctors);
   }
 
   @SubscribeMessage('rejoin_session')
