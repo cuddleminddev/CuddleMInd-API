@@ -403,7 +403,7 @@ export class ChatGateway
     scheduledAt: Date;
     doctorId: string;
   }) {
-    // Notify patient
+    // ── 1. Notify patient ─────────────────────────────────────────────────
     const patientSocket = this.patients.get(payload.patientId);
     if (!patientSocket) {
       console.warn(`⚠️ [payment.confirmed] Patient ${payload.patientId} not connected`);
@@ -417,46 +417,49 @@ export class ChatGateway
       console.log(`🔔 [payment.confirmed] Emitted to patient ${payload.patientId}`);
     }
 
-    // Notify doctor via `instant_session_started` — same event the frontend listens for
+    // ── 2. Notify doctor immediately — no DB await ────────────────────────
+    // zegocloudRoomId is deterministic from bookingId so we don't need the
+    // DB upsert to succeed before pushing the event to the doctor.
+    const zegocloudRoomId = `zego-${payload.bookingId}`;
+
+    // Fetch patient name (best-effort, non-blocking)
+    let patientName = '';
     try {
-      const booking = await this.prisma.booking.findUnique({
-        where: { id: payload.bookingId },
-        include: { patient: true },
+      const patient = await this.prisma.user.findUnique({
+        where: { id: payload.patientId },
+        select: { name: true },
       });
-
-      if (!booking) {
-        console.warn(`⚠️ [payment.confirmed] Booking not found: ${payload.bookingId}`);
-        return;
-      }
-
-      // Ensure the consultation session has a zegocloudRoomId so the doctor can join
-      const session = await this.prisma.consultationSession.upsert({
-        where: { bookingId: payload.bookingId },
-        update: {
-          zegocloudRoomId: `zego-${payload.bookingId}`,
-        },
-        create: {
-          bookingId: payload.bookingId,
-          date: booking.scheduledAt,
-          status: 'pending',
-          sessionType: booking.sessionType,
-          zegocloudRoomId: `zego-${payload.bookingId}`,
-        },
-      });
-
-      this.notifyDoctorOfInstantSession(payload.doctorId, {
-        sessionId: session.id,
-        patientId: booking.patientId,
-        patientName: booking.patient?.name ?? '',
-        doctorId: payload.doctorId,
-        bookingId: booking.id,
-        zegocloudRoomId: session.zegocloudRoomId,
-        sessionType: booking.sessionType,
-        scheduledAt: booking.scheduledAt,
-      });
-    } catch (err) {
-      console.error('❌ [payment.confirmed] Failed to notify doctor:', err);
+      patientName = patient?.name ?? '';
+    } catch {
+      console.warn(`⚠️ [payment.confirmed] Could not fetch patient name for ${payload.patientId}`);
     }
+
+    this.notifyDoctorOfInstantSession(payload.doctorId, {
+      sessionId:       payload.bookingId, // filled in below once upsert resolves
+      patientId:       payload.patientId,
+      patientName,
+      doctorId:        payload.doctorId,
+      bookingId:       payload.bookingId,
+      zegocloudRoomId,
+      scheduledAt:     payload.scheduledAt,
+    });
+
+    // ── 3. Persist zegocloudRoomId on consultation session (fire-and-forget) ─
+    this.prisma.consultationSession.upsert({
+      where:  { bookingId: payload.bookingId },
+      update: { zegocloudRoomId },
+      create: {
+        bookingId:  payload.bookingId,
+        date:       payload.scheduledAt,
+        status:     'pending',
+        sessionType: 'video',   // fallback; real value already set by createConsultationSession
+        zegocloudRoomId,
+      },
+    }).then((session) => {
+      console.log(`✅ [payment.confirmed] Consultation session upserted, id: ${session.id}`);
+    }).catch((err) => {
+      console.error('❌ [payment.confirmed] Failed to upsert consultation session:', err);
+    });
   }
 
   /**
