@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -20,6 +21,20 @@ export interface FindAllOptions {
 
 @Injectable()
 export class UsersService {
+  /** In-memory set of doctor IDs currently connected to the WebSocket. */
+  private onlineDoctorIds = new Set<string>();
+
+  @OnEvent('doctor.online')
+  handleDoctorOnline(payload: { doctorId: string }) {
+    this.onlineDoctorIds.add(payload.doctorId);
+    console.log(`🟢 Doctor online: ${payload.doctorId} (total: ${this.onlineDoctorIds.size})`);
+  }
+
+  @OnEvent('doctor.offline')
+  handleDoctorOffline(payload: { doctorId: string }) {
+    this.onlineDoctorIds.delete(payload.doctorId);
+    console.log(`🔴 Doctor offline: ${payload.doctorId} (total: ${this.onlineDoctorIds.size})`);
+  }
   constructor(private readonly prisma: PrismaService) { }
 
   async create(createUserDto: CreateUserDto) {
@@ -102,6 +117,10 @@ export class UsersService {
     const now = new Date();
     const endWindow = dayjs(now).add(90, 'minute').toDate();
 
+    // Only consider doctors who are currently connected to the WebSocket
+    const onlineIds = Array.from(this.onlineDoctorIds);
+    if (onlineIds.length === 0) return [];
+
     // Get doctors who have no bookings or unavailability in the next 90 minutes
     const busyDoctorIds = await this.prisma.doctorUnavailability.findMany({
       where: {
@@ -137,10 +156,9 @@ export class UsersService {
 
     const availableDoctors = await this.prisma.user.findMany({
       where: {
-        role: {
-          name: 'doctor',
-        },
+        role: { name: 'doctor' },
         id: {
+          in: onlineIds,          // must be connected via WebSocket
           notIn: excludeDoctorIds,
         },
         status: 'active',

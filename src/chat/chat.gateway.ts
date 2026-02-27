@@ -8,12 +8,8 @@ import {
   OnGatewayDisconnect,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { OnEvent } from '@nestjs/event-emitter';
+import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
-import { ChatService } from './chat.service';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { BookingsService } from 'src/bookings/bookings.service';
-import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -32,6 +28,7 @@ export class ChatGateway
     private readonly chatService: ChatService,
     private readonly bookingService: BookingsService,
     private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   afterInit() {
@@ -52,7 +49,8 @@ export class ChatGateway
       this.consultants.set(userId, client);
     } else if (role === 'doctor') {
       this.doctors.set(userId, client);
-      this.broadcastDoctorList(); // 🔄 NEW
+      this.eventEmitter.emit('doctor.online', { doctorId: userId });
+      this.broadcastDoctorList();
     } else if (role === 'patient') {
       this.patients.set(userId, client);
     }
@@ -84,6 +82,7 @@ export class ChatGateway
 
     if (
       this.removeClient(this.doctors, 'Doctor', client, (id) => {
+        this.eventEmitter.emit('doctor.offline', { doctorId: id });
         this.broadcastDoctorList();
         this.server.emit('doctor_disconnected', { doctorId: id });
       })
