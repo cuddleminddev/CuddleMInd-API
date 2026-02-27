@@ -403,18 +403,32 @@ export class ChatGateway
     scheduledAt: Date;
     doctorId: string;
   }) {
+    // Notify patient
     const patientSocket = this.patients.get(payload.patientId);
     if (!patientSocket) {
       console.warn(`⚠️ [payment.confirmed] Patient ${payload.patientId} not connected`);
-      return;
+    } else {
+      patientSocket.emit('payment_confirmed', {
+        bookingId: payload.bookingId,
+        status: 'confirmed',
+        scheduledAt: payload.scheduledAt,
+        doctorId: payload.doctorId,
+      });
+      console.log(`🔔 [payment.confirmed] Emitted to patient ${payload.patientId}`);
     }
-    patientSocket.emit('payment_confirmed', {
-      bookingId: payload.bookingId,
-      status: 'confirmed',
-      scheduledAt: payload.scheduledAt,
-      doctorId: payload.doctorId,
-    });
-    console.log(`🔔 [payment.confirmed] Emitted to patient ${payload.patientId}`);
+
+    // Notify doctor — was missing, causing the doctor WebSocket callback to never fire
+    const doctorSocket = this.doctors.get(payload.doctorId);
+    if (doctorSocket) {
+      doctorSocket.emit('booking_confirmed', {
+        bookingId: payload.bookingId,
+        patientId: payload.patientId,
+        scheduledAt: payload.scheduledAt,
+      });
+      console.log(`🔔 [payment.confirmed] Emitted booking_confirmed to doctor ${payload.doctorId}`);
+    } else {
+      console.warn(`⚠️ [payment.confirmed] Doctor ${payload.doctorId} not connected via WebSocket`);
+    }
   }
 
   /**
