@@ -10,6 +10,10 @@ import {
 } from '@nestjs/websockets';
 import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 import { Server, Socket } from 'socket.io';
+import { ChatService } from './chat.service';
+import { BookingsService } from 'src/bookings/bookings.service';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
 
 @WebSocketGateway({
   cors: { origin: '*' },
