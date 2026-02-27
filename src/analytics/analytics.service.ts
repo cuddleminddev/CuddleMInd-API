@@ -1,14 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { eachDayOfInterval, format } from 'date-fns';
+import { eachDayOfInterval } from 'date-fns';
 
+/** Returns a Prisma DateTime range filter, always in UTC. */
 function getDateFilter(startDate?: Date, endDate?: Date) {
   if (!startDate && !endDate) return undefined;
-
   const filter: any = {};
   if (startDate) filter.gte = new Date(startDate);
   if (endDate) filter.lte = new Date(endDate);
   return filter;
+}
+
+/** Format a Date to 'yyyy-MM-dd' using UTC values so the server timezone
+ *  never shifts a day boundary. */
+function utcDateKey(date: Date): string {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(date.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 @Injectable()
@@ -16,67 +25,95 @@ export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getAdminAnalytics(startDate?: Date, endDate?: Date) {
-    const dateFilter = getDateFilter(startDate, endDate);
+    // For earnings / booking counts use scheduledAt (when the session happens).
+    // For user counts always return totals — date range only narrows bookings.
+    const scheduledAtFilter = getDateFilter(startDate, endDate);
 
     const [
       earnings,
       totalPatients,
       totalDoctors,
       totalBookings,
-      bookingDistribution,
+      bookingsForDistribution,
     ] = await Promise.all([
+      // Earnings: sum paid bookings whose session falls in the range
       this.prisma.booking.aggregate({
         _sum: { amount: true },
-        where: { isPaid: true, createdAt: dateFilter },
+        where: {
+          isPaid: true,
+          ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
+        },
       }),
-      this.prisma.user.count({
-        where: { role: { name: 'client' }, createdAt: dateFilter },
+      // Always-total counts — not filtered by date (a date-range query
+      // previously returned "0 patients" because no one registered that day)
+      this.prisma.user.count({ where: { role: { name: 'client' } } }),
+      this.prisma.user.count({ where: { role: { name: 'doctor' } } }),
+      this.prisma.booking.count({
+        where: scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {},
       }),
-      this.prisma.user.count({
-        where: { role: { name: 'doctor' }, createdAt: dateFilter },
-      }),
-      this.prisma.booking.count({ where: { createdAt: dateFilter } }),
-      this.prisma.booking.groupBy({
-        by: ['scheduledAt'],
-        where: { createdAt: dateFilter },
-        _count: true,
+      // Fetch raw bookings so we can aggregate by UTC date in JS (groupBy on
+      // a DateTime column produces one row per unique timestamp, not per day)
+      this.prisma.booking.findMany({
+        where: scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {},
+        select: { scheduledAt: true },
         orderBy: { scheduledAt: 'asc' },
       }),
     ]);
+
+    // Aggregate booking count by UTC date
+    const distributionMap = new Map<string, number>();
+    for (const b of bookingsForDistribution) {
+      const key = utcDateKey(b.scheduledAt);
+      distributionMap.set(key, (distributionMap.get(key) ?? 0) + 1);
+    }
+    const bookingDistribution = Array.from(distributionMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
 
     return {
       totalEarnings: earnings._sum.amount || 0,
       totalPatients,
       totalDoctors,
       totalBookings,
-      bookingDistribution: bookingDistribution.map((entry) => ({
-        date: entry.scheduledAt,
-        count: entry._count,
-      })),
+      bookingDistribution,
     };
   }
 
   async getDoctorAnalytics(doctorId: string, startDate?: Date, endDate?: Date) {
-    const dateFilter = getDateFilter(startDate, endDate);
+    const scheduledAtFilter = getDateFilter(startDate, endDate);
 
     const [earnings, totalBookings, upcomingBookings, patients] =
       await Promise.all([
         this.prisma.booking.aggregate({
           _sum: { amount: true },
-          where: { doctorId, isPaid: true, createdAt: dateFilter },
-        }),
-        this.prisma.booking.count({
-          where: { doctorId, createdAt: dateFilter },
+          where: {
+            doctorId,
+            isPaid: true,
+            ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
+          },
         }),
         this.prisma.booking.count({
           where: {
             doctorId,
-            scheduledAt: { gte: new Date() },
+            ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
+          },
+        }),
+        // Upcoming = confirmed bookings from now (or from startDate) onward
+        this.prisma.booking.count({
+          where: {
+            doctorId,
             status: 'confirmed',
+            scheduledAt: {
+              gte: startDate && startDate > new Date() ? startDate : new Date(),
+              ...(endDate ? { lte: endDate } : {}),
+            },
           },
         }),
         this.prisma.booking.findMany({
-          where: { doctorId, createdAt: dateFilter },
+          where: {
+            doctorId,
+            ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
+          },
           select: { patientId: true },
           distinct: ['patientId'],
         }),
@@ -91,22 +128,23 @@ export class AnalyticsService {
   }
 
   async getPieChartDistributionChartJs(startDate?: Date, endDate?: Date) {
-    const dateFilter = getDateFilter(startDate, endDate);
+    const scheduledAtFilter = getDateFilter(startDate, endDate);
+    const startedAtFilter = getDateFilter(startDate, endDate);
 
     const [bookings, users, chats] = await Promise.all([
       this.prisma.booking.count({
         where: {
           status: { in: ['confirmed', 'completed'] },
-          createdAt: dateFilter,
+          ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
         },
       }),
-      this.prisma.user.count({
-        where: { status: 'active', createdAt: dateFilter },
-      }),
+      // Active user total (not date-filtered — avoids showing 0 when range
+      // contains no new signups)
+      this.prisma.user.count({ where: { status: 'active' } }),
       this.prisma.chatSession.count({
         where: {
           status: { in: ['ongoing', 'completed'] },
-          startedAt: dateFilter,
+          ...(startedAtFilter ? { startedAt: startedAtFilter } : {}),
         },
       }),
     ]);
@@ -120,43 +158,40 @@ export class AnalyticsService {
   async getBookingLineChartByType(startDate?: Date, endDate?: Date) {
     const whereClause: any = {};
     if (startDate && endDate) {
-      whereClause.createdAt = {
-        gte: startDate,
-        lte: endDate,
-      };
+      whereClause.scheduledAt = { gte: startDate, lte: endDate };
     }
 
     const bookings = await this.prisma.booking.findMany({
       where: whereClause,
-      select: {
-        createdAt: true,
-        type: true,
-      },
+      select: { scheduledAt: true, type: true },
     });
 
-    const allTypes = ['normal', 'instant', 'special', 'rebooking'];
+    // Collect all actual booking types present (don't hardcode — new types
+    // will be picked up automatically)
+    const typeSet = new Set<string>();
     const dailyMap: Record<string, Record<string, number>> = {};
 
-    // Aggregate booking counts by date and type
     for (const booking of bookings) {
-      const dateKey = format(booking.createdAt, 'yyyy-MM-dd');
-      if (!dailyMap[dateKey]) {
-        dailyMap[dateKey] = Object.fromEntries(allTypes.map((t) => [t, 0]));
-      }
-      dailyMap[dateKey][booking.type]++;
+      const dateKey = utcDateKey(booking.scheduledAt); // UTC-safe
+      const type = booking.type as string;
+      typeSet.add(type);
+      if (!dailyMap[dateKey]) dailyMap[dateKey] = {};
+      dailyMap[dateKey][type] = (dailyMap[dateKey][type] ?? 0) + 1;
     }
 
-    // Generate a list of all dates between start and end
+    const allTypes = Array.from(typeSet).sort();
+
+    // Full date range — fill gaps with 0
     const fullDateRange =
       startDate && endDate
         ? eachDayOfInterval({ start: startDate, end: endDate }).map((d) =>
-            format(d, 'yyyy-MM-dd'),
+            utcDateKey(d),
           )
-        : Object.keys(dailyMap).sort(); // fallback to only available dates
+        : Object.keys(dailyMap).sort();
 
     const datasets = allTypes.map((type) => ({
       label: type,
-      data: fullDateRange.map((date) => dailyMap[date]?.[type] || 0),
+      data: fullDateRange.map((date) => dailyMap[date]?.[type] ?? 0),
     }));
 
     return {
