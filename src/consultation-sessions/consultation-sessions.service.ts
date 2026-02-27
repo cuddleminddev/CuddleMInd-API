@@ -9,7 +9,7 @@ export class ConsultationSessionsService {
   constructor(
     private prisma: PrismaService,
     private chatGateway: ChatGateway, // Inject gateway here
-  ) {}
+  ) { }
 
   async startSession(bookingId: string, createdBy: string) {
     const existing = await this.prisma.consultationSession.findUnique({

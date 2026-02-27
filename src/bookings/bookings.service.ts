@@ -531,12 +531,17 @@ export class BookingsService {
   }
 
   async createConsultationSession(booking: Booking) {
-    await this.prisma.consultationSession.create({
-      data: {
+    await this.prisma.consultationSession.upsert({
+      where: { bookingId: booking.id },
+      update: {
+        zegocloudRoomId: `zego-${booking.id}`,
+      },
+      create: {
         bookingId: booking.id,
         date: booking.scheduledAt,
         status: SessionStatusEnum.pending,
         sessionType: booking.sessionType,
+        zegocloudRoomId: `zego-${booking.id}`,
       },
     });
   }

@@ -394,10 +394,10 @@ export class ChatGateway
 
   /**
    * Called by StripeService (via EventEmitter) when a payment is confirmed.
-   * Emits `payment_confirmed` to the patient's socket.
+   * Emits `payment_confirmed` to the patient and `instant_session_started` to the doctor.
    */
   @OnEvent('payment.confirmed')
-  handlePaymentConfirmed(payload: {
+  async handlePaymentConfirmed(payload: {
     patientId: string;
     bookingId: string;
     scheduledAt: Date;
@@ -417,17 +417,45 @@ export class ChatGateway
       console.log(`🔔 [payment.confirmed] Emitted to patient ${payload.patientId}`);
     }
 
-    // Notify doctor — was missing, causing the doctor WebSocket callback to never fire
-    const doctorSocket = this.doctors.get(payload.doctorId);
-    if (doctorSocket) {
-      doctorSocket.emit('booking_confirmed', {
-        bookingId: payload.bookingId,
-        patientId: payload.patientId,
-        scheduledAt: payload.scheduledAt,
+    // Notify doctor via `instant_session_started` — same event the frontend listens for
+    try {
+      const booking = await this.prisma.booking.findUnique({
+        where: { id: payload.bookingId },
+        include: { patient: true },
       });
-      console.log(`🔔 [payment.confirmed] Emitted booking_confirmed to doctor ${payload.doctorId}`);
-    } else {
-      console.warn(`⚠️ [payment.confirmed] Doctor ${payload.doctorId} not connected via WebSocket`);
+
+      if (!booking) {
+        console.warn(`⚠️ [payment.confirmed] Booking not found: ${payload.bookingId}`);
+        return;
+      }
+
+      // Ensure the consultation session has a zegocloudRoomId so the doctor can join
+      const session = await this.prisma.consultationSession.upsert({
+        where: { bookingId: payload.bookingId },
+        update: {
+          zegocloudRoomId: `zego-${payload.bookingId}`,
+        },
+        create: {
+          bookingId: payload.bookingId,
+          date: booking.scheduledAt,
+          status: 'pending',
+          sessionType: booking.sessionType,
+          zegocloudRoomId: `zego-${payload.bookingId}`,
+        },
+      });
+
+      this.notifyDoctorOfInstantSession(payload.doctorId, {
+        sessionId: session.id,
+        patientId: booking.patientId,
+        patientName: booking.patient?.name ?? '',
+        doctorId: payload.doctorId,
+        bookingId: booking.id,
+        zegocloudRoomId: session.zegocloudRoomId,
+        sessionType: booking.sessionType,
+        scheduledAt: booking.scheduledAt,
+      });
+    } catch (err) {
+      console.error('❌ [payment.confirmed] Failed to notify doctor:', err);
     }
   }
 
