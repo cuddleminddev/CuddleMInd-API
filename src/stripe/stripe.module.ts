@@ -15,4 +15,4 @@ import { BookingsModule } from 'src/bookings/bookings.module';
   controllers: [StripeController],
   exports: [StripeService],
 })
-export class StripeModule {}
+export class StripeModule { }

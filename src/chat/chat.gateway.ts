@@ -15,8 +15,7 @@ import { Server, Socket } from 'socket.io';
   cors: { origin: '*' },
 })
 export class ChatGateway
-  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
-{
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
@@ -29,7 +28,7 @@ export class ChatGateway
     private readonly bookingService: BookingsService,
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   afterInit() {
     console.log('WebSocket initialized');
@@ -464,23 +463,23 @@ export class ChatGateway
     }
 
     this.notifyDoctorOfInstantSession(payload.doctorId, {
-      sessionId:       payload.bookingId, // filled in below once upsert resolves
-      patientId:       payload.patientId,
+      sessionId: payload.bookingId, // filled in below once upsert resolves
+      patientId: payload.patientId,
       patientName,
-      doctorId:        payload.doctorId,
-      bookingId:       payload.bookingId,
+      doctorId: payload.doctorId,
+      bookingId: payload.bookingId,
       zegocloudRoomId,
-      scheduledAt:     payload.scheduledAt,
+      scheduledAt: payload.scheduledAt,
     });
 
     // ── 3. Persist zegocloudRoomId on consultation session (fire-and-forget) ─
     this.prisma.consultationSession.upsert({
-      where:  { bookingId: payload.bookingId },
+      where: { bookingId: payload.bookingId },
       update: { zegocloudRoomId },
       create: {
-        bookingId:  payload.bookingId,
-        date:       payload.scheduledAt,
-        status:     'pending',
+        bookingId: payload.bookingId,
+        date: payload.scheduledAt,
+        status: 'pending',
         sessionType: 'video',   // fallback; real value already set by createConsultationSession
         zegocloudRoomId,
       },

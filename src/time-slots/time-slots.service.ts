@@ -74,9 +74,15 @@ export class TimeSlotsService {
     ]);
 
     const slotDuration = 30; // minutes
-    const availableIntervals: { start: Date; end: Date }[] = [];
+
+    // Use a Map keyed on interval start ISO string so that when multiple doctors
+    // cover the same time window, the slot appears only once in the output — but
+    // a booking / unavailability for Doctor A does NOT hide the slot for Doctor B.
+    const availableIntervalsMap = new Map<string, { start: Date; end: Date }>();
 
     for (const slot of timeslots) {
+      const slotDoctorId = slot.doctorId;
+
       // Apply the saved UTC times to the selected date
       const startTime = new Date(date);
       startTime.setUTCHours(
@@ -104,14 +110,19 @@ export class TimeSlotsService {
         const intervalEnd = addMinutes(intervalStart, slotDuration);
         current = intervalEnd;
 
+        // Only check bookings that belong to THIS doctor — another doctor's
+        // booking at the same time must not hide this slot.
         const overlapsBooking = bookings.some((b) => {
+          if (b.doctorId !== slotDoctorId) return false;
           const bTime = b.scheduledAt.getTime();
           return (
             bTime >= intervalStart.getTime() && bTime < intervalEnd.getTime()
           );
         });
 
+        // Same for unavailability records — scope check to this doctor.
         const overlapsUnavailability = unavailabilities.some((u) => {
+          if (u.doctorId !== slotDoctorId) return false;
           return (
             intervalStart < new Date(u.endTime) &&
             intervalEnd > new Date(u.startTime)
@@ -119,16 +130,19 @@ export class TimeSlotsService {
         });
 
         if (!overlapsBooking && !overlapsUnavailability) {
-          availableIntervals.push({
-            start: intervalStart,
-            end: intervalEnd,
-          });
+          const key = intervalStart.toISOString();
+          if (!availableIntervalsMap.has(key)) {
+            availableIntervalsMap.set(key, {
+              start: intervalStart,
+              end: intervalEnd,
+            });
+          }
         }
       }
     }
 
     // Return ISO UTC strings for frontend
-    return availableIntervals
+    return Array.from(availableIntervalsMap.values())
       .sort((a, b) => a.start.getTime() - b.start.getTime())
       .map(({ start, end }) => ({
         start: start.toISOString(),

@@ -26,7 +26,7 @@ import { StripeService } from 'src/stripe/stripe.service';
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const SESSION_DURATION_MS = 60 * 60 * 1000;
+const SESSION_DURATION_MS = 30 * 60 * 1000;
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && aEnd > bStart;
@@ -38,7 +38,7 @@ export class BookingsService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => StripeService))
     private stripeService: StripeService,
-  ) {}
+  ) { }
 
   // Create booking with plan or one-time payment
   async create(dto: CreateBookingDto, clientId: string) {

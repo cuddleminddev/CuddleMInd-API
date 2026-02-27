@@ -50,4 +50,4 @@ import { ContactUsModule } from './contact-us/contact-us.module';
     ContactUsModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

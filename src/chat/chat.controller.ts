@@ -33,7 +33,7 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly responseService: ResponseService,
     private readonly chatGateway: ChatGateway,
-  ) {}
+  ) { }
 
   @Get('messages-by-sender')
   async getMessagesBySender(@Request() req) {
@@ -121,14 +121,14 @@ export class ChatController {
       type: 'object',
       required: ['doctorId'],
       properties: {
-        doctorId:      { type: 'string', description: 'ID of the connected doctor' },
-        patientId:     { type: 'string', example: 'mock-patient-id' },
-        patientName:   { type: 'string', example: 'Test Patient' },
-        bookingId:     { type: 'string', example: 'mock-booking-id' },
-        sessionId:     { type: 'string', example: 'mock-session-id' },
-        sessionType:   { type: 'string', example: 'video' },
+        doctorId: { type: 'string', description: 'ID of the connected doctor' },
+        patientId: { type: 'string', example: 'mock-patient-id' },
+        patientName: { type: 'string', example: 'Test Patient' },
+        bookingId: { type: 'string', example: 'mock-booking-id' },
+        sessionId: { type: 'string', example: 'mock-session-id' },
+        sessionType: { type: 'string', example: 'video' },
         zegocloudRoomId: { type: 'string', example: 'zego-mock-room-123' },
-        scheduledAt:   { type: 'string', format: 'date-time' },
+        scheduledAt: { type: 'string', format: 'date-time' },
       },
     },
   })
@@ -145,14 +145,14 @@ export class ChatController {
   }) {
     const now = new Date().toISOString();
     const payload = {
-      sessionId:       body.sessionId       ?? `mock-session-${Date.now()}`,
-      patientId:       body.patientId       ?? 'mock-patient-id',
-      patientName:     body.patientName     ?? 'Test Patient',
-      doctorId:        body.doctorId,
-      bookingId:       body.bookingId       ?? `mock-booking-${Date.now()}`,
-      sessionType:     body.sessionType     ?? 'video',
+      sessionId: body.sessionId ?? `mock-session-${Date.now()}`,
+      patientId: body.patientId ?? 'mock-patient-id',
+      patientName: body.patientName ?? 'Test Patient',
+      doctorId: body.doctorId,
+      bookingId: body.bookingId ?? `mock-booking-${Date.now()}`,
+      sessionType: body.sessionType ?? 'video',
       zegocloudRoomId: body.zegocloudRoomId ?? `zego-mock-${Date.now()}`,
-      scheduledAt:     body.scheduledAt     ?? now,
+      scheduledAt: body.scheduledAt ?? now,
     };
 
     this.chatGateway.notifyDoctorOfInstantSession(body.doctorId, payload);
