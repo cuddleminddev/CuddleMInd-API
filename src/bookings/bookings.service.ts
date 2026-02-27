@@ -454,13 +454,15 @@ export class BookingsService {
         role: { name: 'doctor' },
         bookingsAsDoctor: {
           none: {
-            // Only confirmed (paid) bookings lock the slot — pending bookings
-            // do not block assignment until payment is completed.
+            // Exclude doctors who already have a pending OR confirmed booking
+            // that overlaps this slot.  Without this, the same doctor could be
+            // assigned to two different users for the same time slot (both
+            // pending), leading to a double-booking when payment completes.
             scheduledAt: {
               gte: overlapWindowStart,
               lt: scheduledEnd.toDate(),
             },
-            status: 'confirmed',
+            status: { in: ['pending', 'confirmed'] },
           },
         },
         doctorUnavailabilities: {
