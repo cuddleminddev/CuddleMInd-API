@@ -421,10 +421,49 @@ export class ChatService {
         id: sessionId,
         OR: [{ patientId: userId }, { supportId: userId }],
       },
+      include: {
+        patient: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profilePicture: true,
+          },
+        },
+        support: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profilePicture: true,
+            doctorProfile: true,
+          },
+        },
+      },
     });
 
     if (!session) {
       throw new NotFoundException('Chat session not found or access denied');
+    }
+
+    // Fetch the most recent consultation session linked to a booking between
+    // the patient and the doctor (support) of this chat session, if any.
+    let consultationInfo: any = null;
+    if (session.supportId) {
+      const booking = await this.prisma.booking.findFirst({
+        where: {
+          patientId: session.patientId,
+          doctorId: session.supportId,
+          consultationSession: { isNot: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          consultationSession: true,
+        },
+      });
+      if (booking?.consultationSession) {
+        consultationInfo = booking.consultationSession;
+      }
     }
 
     const skip = (page - 1) * limit;
@@ -465,6 +504,9 @@ export class ChatService {
         status: session.status,
         startedAt: session.startedAt,
         endedAt: session.endedAt,
+        doctor: session.support ?? null,
+        patient: session.patient ?? null,
+        consultationInfo,
       },
       messages: messages.map((message) => ({
         id: message.id,

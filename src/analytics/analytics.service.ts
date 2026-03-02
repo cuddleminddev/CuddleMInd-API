@@ -49,12 +49,18 @@ export class AnalyticsService {
       this.prisma.user.count({ where: { role: { name: 'client' } } }),
       this.prisma.user.count({ where: { role: { name: 'doctor' } } }),
       this.prisma.booking.count({
-        where: scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {},
+        where: {
+          status: { not: 'pending' },
+          ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
+        },
       }),
       // Fetch raw bookings so we can aggregate by UTC date in JS (groupBy on
       // a DateTime column produces one row per unique timestamp, not per day)
       this.prisma.booking.findMany({
-        where: scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {},
+        where: {
+          status: { not: 'pending' },
+          ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
+        },
         select: { scheduledAt: true },
         orderBy: { scheduledAt: 'asc' },
       }),
@@ -95,6 +101,7 @@ export class AnalyticsService {
         this.prisma.booking.count({
           where: {
             doctorId,
+            status: { not: 'pending' },
             ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
           },
         }),
@@ -112,6 +119,7 @@ export class AnalyticsService {
         this.prisma.booking.findMany({
           where: {
             doctorId,
+            status: { not: 'pending' },
             ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
           },
           select: { patientId: true },
@@ -156,7 +164,7 @@ export class AnalyticsService {
   }
 
   async getBookingLineChartByType(startDate?: Date, endDate?: Date) {
-    const whereClause: any = {};
+    const whereClause: any = { status: { not: 'pending' } };
     if (startDate && endDate) {
       whereClause.scheduledAt = { gte: startDate, lte: endDate };
     }
