@@ -81,6 +81,15 @@ export class UsersController {
     return this.responseService.successResponse('Doctors Found', staff);
   }
 
+  @Get('all-doctors')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'staff')
+  @ApiOperation({ summary: 'Get all doctors (admin & staff)' })
+  async findAllDoctors() {
+    const doctors = await this.usersService.findByRole('doctor');
+    return this.responseService.successResponse('Doctors Found', doctors);
+  }
+
   @Get('staff')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')

@@ -15,7 +15,7 @@ export class StripeController {
   constructor(
     private readonly stripeService: StripeService,
     private readonly eventEmitter: EventEmitter2,
-  ) {}
+  ) { }
 
   @Post('razorpay')
   async handleRazorpayWebhook(

@@ -22,7 +22,7 @@ function utcDateKey(date: Date): string {
 
 @Injectable()
 export class AnalyticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async getAdminAnalytics(startDate?: Date, endDate?: Date) {
     // For earnings / booking counts use scheduledAt (when the session happens).
@@ -194,8 +194,8 @@ export class AnalyticsService {
     const fullDateRange =
       startDate && endDate
         ? eachDayOfInterval({ start: startDate, end: endDate }).map((d) =>
-            utcDateKey(d),
-          )
+          utcDateKey(d),
+        )
         : Object.keys(dailyMap).sort();
 
     const datasets = allTypes.map((type) => ({

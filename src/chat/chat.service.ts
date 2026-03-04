@@ -12,48 +12,40 @@ export class ChatService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Find or create a chat session between patient and support.
-   * This ensures only one session exists per user pair, continuing the conversation history.
+   * Find or create a chat session for a patient.
+   * Each new chat request creates a fresh session so history stays separate.
+   * The only reuse case is when a patient double-clicks (pending session already
+   * exists and no consultant has taken it yet).
    */
   async findOrCreateChatSession(patientId: string, supportId?: string) {
-    // Build the where clause based on whether supportId is provided
-    const where: any = {
-      patientId,
-    };
-
-    // If supportId is provided, look for session between this specific pair
     if (supportId) {
-      where.supportId = supportId;
+      // Called with a specific support — always create a fresh session
+      return this.prisma.chatSession.create({
+        data: {
+          patientId,
+          supportId,
+          status: SessionStatusEnum.ongoing,
+        },
+      });
     }
 
-    // First, try to find an existing session (any status)
-    let session = await this.prisma.chatSession.findFirst({
-      where,
-      orderBy: { startedAt: 'desc' }, // Get the most recent one
+    // Patient-initiated (no support yet): reuse only if there is already
+    // an unassigned pending session (double-click guard). Otherwise create new.
+    const existing = await this.prisma.chatSession.findFirst({
+      where: {
+        patientId,
+        supportId: null,
+        status: SessionStatusEnum.pending,
+      },
+      orderBy: { startedAt: 'desc' },
     });
 
-    // If session exists, reopen it if it was completed
-    if (session) {
-      if (session.status === SessionStatusEnum.completed) {
-        // Reopen the session
-        session = await this.prisma.chatSession.update({
-          where: { id: session.id },
-          data: {
-            status: supportId ? SessionStatusEnum.ongoing : SessionStatusEnum.pending,
-            startedAt: new Date(),
-            endedAt: null,
-          },
-        });
-      }
-      return session;
-    }
+    if (existing) return existing;
 
-    // If no session exists, create a new one
-    return await this.prisma.chatSession.create({
+    return this.prisma.chatSession.create({
       data: {
         patientId,
-        supportId,
-        status: supportId ? SessionStatusEnum.ongoing : SessionStatusEnum.pending,
+        status: SessionStatusEnum.pending,
       },
     });
   }
@@ -98,38 +90,8 @@ export class ChatService {
       return null; // Indicates session was already taken
     }
 
-    // Check if there's already an existing session between this patient and support
-    const existingSession = await this.prisma.chatSession.findFirst({
-      where: {
-        patientId: session.patientId,
-        supportId,
-        id: { not: sessionId }, // Exclude current session
-      },
-    });
-
-    if (existingSession) {
-      // Use the existing session instead of creating a new one
-      // Delete the new pending session
-      await this.prisma.chatSession.delete({
-        where: { id: sessionId },
-      });
-
-      // Reopen existing session if completed
-      if (existingSession.status === SessionStatusEnum.completed) {
-        return this.prisma.chatSession.update({
-          where: { id: existingSession.id },
-          data: {
-            status: SessionStatusEnum.ongoing,
-            startedAt: new Date(),
-            endedAt: null,
-          },
-        });
-      }
-
-      return existingSession;
-    }
-
-    // Assign the consultant to the current session
+    // Assign the consultant to this specific pending session.
+    // Never merge into a previous session — each chat request is its own history.
     return this.prisma.chatSession.update({
       where: { id: sessionId },
       data: {
