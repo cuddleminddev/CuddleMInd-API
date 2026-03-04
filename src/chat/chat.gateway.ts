@@ -14,6 +14,7 @@ import { ChatService } from './chat.service';
 import { BookingsService } from 'src/bookings/bookings.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
+import { SessionType } from '@prisma/client';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -505,7 +506,7 @@ export class ChatGateway
         bookingId: payload.bookingId,
         date: payload.scheduledAt,
         status: 'pending',
-        sessionType: payload.sessionType ?? 'video',
+        sessionType: (payload.sessionType as SessionType) ?? SessionType.video,
         zegocloudRoomId,
       },
     }).then((session) => {
