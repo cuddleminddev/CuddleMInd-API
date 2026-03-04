@@ -439,6 +439,10 @@ export class ChatGateway
     }
   }
 
+  getConnectedDoctorIds(): string[] {
+    return Array.from(this.doctors.keys());
+  }
+
   /**
    * Called by StripeService (via EventEmitter) when a payment is confirmed.
    * Emits `payment_confirmed` to the patient and `instant_session_started` to the doctor.
@@ -449,6 +453,7 @@ export class ChatGateway
     bookingId: string;
     scheduledAt: Date;
     doctorId: string;
+    sessionType?: string;
   }) {
     // ── 1. Notify patient ─────────────────────────────────────────────────
     const patientSocket = this.patients.get(payload.patientId);
@@ -482,11 +487,12 @@ export class ChatGateway
     }
 
     this.notifyDoctorOfInstantSession(payload.doctorId, {
-      sessionId: payload.bookingId, // filled in below once upsert resolves
+      sessionId: payload.bookingId,
       patientId: payload.patientId,
       patientName,
       doctorId: payload.doctorId,
       bookingId: payload.bookingId,
+      sessionType: payload.sessionType ?? 'video',
       zegocloudRoomId,
       scheduledAt: payload.scheduledAt,
     });
@@ -499,7 +505,7 @@ export class ChatGateway
         bookingId: payload.bookingId,
         date: payload.scheduledAt,
         status: 'pending',
-        sessionType: 'video',   // fallback; real value already set by createConsultationSession
+        sessionType: payload.sessionType ?? 'video',
         zegocloudRoomId,
       },
     }).then((session) => {

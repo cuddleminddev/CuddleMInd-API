@@ -224,6 +224,7 @@ export class StripeService {
             bookingId: booking.id,
             scheduledAt: booking.scheduledAt,
             doctorId: booking.doctorId,
+            sessionType: booking.sessionType,
           });
           console.log('[CAPTURED] [PLAN] ✅ Pending booking confirmed via plan purchase webhook:', notes.bookingId);
         } else {
@@ -280,6 +281,7 @@ export class StripeService {
         bookingId: bookingId,
         scheduledAt: booking.scheduledAt,
         doctorId: booking.doctorId,
+        sessionType: booking.sessionType,
       });
       console.log('[CAPTURED] [ONE_TIME] ✅ payment.confirmed event emitted.');
     } else if (type === PaymentType.one_time && !notes.bookingId) {

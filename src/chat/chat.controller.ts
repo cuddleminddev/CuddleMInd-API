@@ -27,7 +27,6 @@ import {
 @ApiTags('Chat')
 @ApiBearerAuth()
 @Controller('chat')
-@UseGuards(JwtAuthGuard)
 export class ChatController {
   constructor(
     private readonly chatService: ChatService,
@@ -35,6 +34,7 @@ export class ChatController {
     private readonly chatGateway: ChatGateway,
   ) { }
 
+  @UseGuards(JwtAuthGuard)
   @Get('messages-by-sender')
   async getMessagesBySender(@Request() req) {
     const senderId = req.user.id;
@@ -45,6 +45,7 @@ export class ChatController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('sessions')
   @ApiOperation({ summary: 'Get all chat sessions for the current user' })
   @ApiResponse({
@@ -71,6 +72,7 @@ export class ChatController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('sessions/:sessionId/messages')
   @ApiOperation({ summary: 'Get messages in a specific chat session' })
   @ApiResponse({
@@ -103,12 +105,28 @@ export class ChatController {
   }
 
   /**
+   * DEBUG — list all doctors currently connected to the WebSocket.
+   * Use this to confirm the doctorId before calling the mock endpoint.
+   * GET /chat/mock/connected-doctors
+   */
+  @Get('mock/connected-doctors')
+  @ApiOperation({ summary: '[DEBUG] List connected doctor socket IDs' })
+  getConnectedDoctors() {
+    const ids = this.chatGateway.getConnectedDoctorIds();
+    return this.responseService.successResponse(
+      'Connected doctors',
+      { connectedDoctorIds: ids, count: ids.length },
+    );
+  }
+
+  /**
    * MOCK ENDPOINT — for testing doctor incoming session notification.
    * Directly fires the `instant_session_started` WebSocket event to the
    * specified doctor without going through the full payment/webhook flow.
    *
    * POST /chat/mock/doctor-incoming
    */
+  // No @UseGuards here — intentionally unprotected for testing
   @Post('mock/doctor-incoming')
   @ApiOperation({
     summary: '[MOCK] Simulate an incoming session notification for a doctor',
