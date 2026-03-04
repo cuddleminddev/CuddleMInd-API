@@ -14,7 +14,7 @@ import { ChatService } from './chat.service';
 import { BookingsService } from 'src/bookings/bookings.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateBookingDto } from 'src/bookings/dto/create-booking.dto';
-import { SessionType } from '@prisma/client';
+import { SessionType, PaymentType, BookingType } from '@prisma/client';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -55,7 +55,8 @@ export class ChatGateway
       this.doctors.set(userId, client);
       this.eventEmitter.emit('doctor.online', { doctorId: userId });
       this.broadcastDoctorList();
-    } else if (role === 'patient') {
+    } else if (role === 'patient' || role === 'client') {
+      // Accept both 'patient' and 'client' — mobile/web may send either
       this.patients.set(userId, client);
     }
 
@@ -131,9 +132,9 @@ export class ChatGateway
         patientId,
         scheduledAt: new Date(),
         durationMinutes: 60,
-        paymentType: 'one_time',
-        sessionType: 'video',
-        type: 'instant',
+        paymentType: PaymentType.one_time,
+        sessionType: SessionType.video,
+        type: BookingType.instant,
       };
 
       console.log(
