@@ -36,12 +36,12 @@ export class AnalyticsService {
       totalBookings,
       bookingsForDistribution,
     ] = await Promise.all([
-      // Earnings: sum paid bookings whose session falls in the range
-      this.prisma.booking.aggregate({
+      // Earnings: sum all successful transactions in the date range
+      this.prisma.transaction.aggregate({
         _sum: { amount: true },
         where: {
-          isPaid: true,
-          ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
+          status: 'success',
+          ...(scheduledAtFilter ? { createdAt: scheduledAtFilter } : {}),
         },
       }),
       // Always-total counts — not filtered by date (a date-range query
@@ -90,12 +90,13 @@ export class AnalyticsService {
 
     const [earnings, totalBookings, upcomingBookings, patients] =
       await Promise.all([
-        this.prisma.booking.aggregate({
+        // Earnings: sum successful transactions linked to this doctor's bookings
+        this.prisma.transaction.aggregate({
           _sum: { amount: true },
           where: {
-            doctorId,
-            isPaid: true,
-            ...(scheduledAtFilter ? { scheduledAt: scheduledAtFilter } : {}),
+            status: 'success',
+            booking: { doctorId },
+            ...(scheduledAtFilter ? { createdAt: scheduledAtFilter } : {}),
           },
         }),
         this.prisma.booking.count({

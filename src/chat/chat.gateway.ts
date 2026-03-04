@@ -239,7 +239,12 @@ export class ChatGateway
 
     const doctor = await this.prisma.user.findUnique({
       where: { id: doctorId },
-      select: { name: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        profilePicture: true,
+      },
     });
 
     if (!doctor) {
@@ -251,10 +256,20 @@ export class ChatGateway
       return;
     }
 
+    // Persist as a doctor_card message so it appears in chat history API
+    await this.chatService.saveDoctorCardMessage(sessionId, doctorId, {
+      id: doctor.id,
+      name: doctor.name,
+      email: doctor.email,
+      profilePicture: doctor.profilePicture,
+    });
+
     const emitPayload = {
       sessionId,
       doctorId,
       name: doctor.name,
+      email: doctor.email,
+      profilePicture: doctor.profilePicture,
     };
 
     patientSocket.emit('receive_consultant_info', emitPayload);
