@@ -28,6 +28,10 @@ export class ChatGateway
   private patients: Map<string, Socket> = new Map();
   private doctors: Map<string, Socket> = new Map();
 
+  // Pending instant_session_started payloads for doctors who are not yet
+  // connected (or who disconnected between booking and payment). Delivered
+  // immediately when the doctor reconnects.
+  private pendingDoctorNotifications: Map<string, any[]> = new Map();
   constructor(
     private readonly chatService: ChatService,
     private readonly bookingService: BookingsService,
@@ -51,12 +55,22 @@ export class ChatGateway
 
     if (role === 'consultant') {
       this.consultants.set(userId, client);
-    } else if (role === 'doctor') {
+    } else if (role.toLowerCase() === 'doctor') {
       this.doctors.set(userId, client);
       this.eventEmitter.emit('doctor.online', { doctorId: userId });
       this.broadcastDoctorList();
-    } else if (role === 'patient' || role === 'client') {
-      // Accept both 'patient' and 'client' — mobile/web may send either
+
+      // Deliver any notifications that arrived while this doctor was offline
+      const pending = this.pendingDoctorNotifications.get(userId);
+      if (pending && pending.length > 0) {
+        console.log(`📬 Delivering ${pending.length} pending notification(s) to doctor ${userId}`);
+        for (const notification of pending) {
+          client.emit('instant_session_started', notification);
+        }
+        this.pendingDoctorNotifications.delete(userId);
+      }
+    } else if (role.toLowerCase() === 'patient' || role.toLowerCase() === 'client') {
+      // Accept 'patient', 'client', 'Patient', 'Client' etc.
       this.patients.set(userId, client);
     }
 
@@ -437,7 +451,11 @@ export class ChatGateway
       doctorSocket.emit('instant_session_started', payload);
       console.log(`🔔 Notified doctor ${doctorId} of instant session`);
     } else {
-      console.warn(`⚠️ Doctor ${doctorId} not connected via WebSocket`);
+      // Doctor is offline — queue the notification so it's delivered on reconnect
+      console.warn(`⚠️ Doctor ${doctorId} not connected — queuing instant_session_started for delivery on reconnect`);
+      const queue = this.pendingDoctorNotifications.get(doctorId) ?? [];
+      queue.push(payload);
+      this.pendingDoctorNotifications.set(doctorId, queue);
     }
   }
 
