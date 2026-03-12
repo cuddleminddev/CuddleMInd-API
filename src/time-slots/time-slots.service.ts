@@ -3,6 +3,7 @@ import { UpdateTimeSlotDto } from './dto/update-time-slot.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import {
   addMinutes,
+  addDays,
   isAfter,
   set,
 } from 'date-fns';
@@ -111,7 +112,7 @@ export class TimeSlotsService {
         0, 0,
       ));
 
-      const endTime = new Date(Date.UTC(
+      let endTime = new Date(Date.UTC(
         dateUtc.getUTCFullYear(),
         dateUtc.getUTCMonth(),
         dateUtc.getUTCDate(),
@@ -119,6 +120,12 @@ export class TimeSlotsService {
         slot.endTime.getUTCMinutes(),
         0, 0,
       ));
+
+      // If endTime is before or equal to startTime, it means the slot crosses
+      // midnight in UTC. Add one day to endTime to handle this correctly.
+      if (endTime <= startTime) {
+        endTime = addDays(endTime, 1);
+      }
 
       let current = new Date(startTime);
 
