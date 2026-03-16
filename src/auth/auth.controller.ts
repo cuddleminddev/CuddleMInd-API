@@ -149,7 +149,11 @@ export class AuthController {
   @Post('otp/send')
   async sendOtp(@Body() data: EmailDto) {
     const result = await this.authService.generateOtp(data.email);
-    return result;
+    await this.mailService.sendOtpEmail(data.email, result.user.name || 'User', result.otp, 10);
+    return {
+      message: result.message,
+      otp: result.otp
+    }
   }
 
   @Post('otp/verify')

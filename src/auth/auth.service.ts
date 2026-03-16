@@ -121,7 +121,7 @@ export class AuthService {
     });
 
     // TODO: Send OTP via email/SMS here
-    return { message: 'OTP sent successfully', otp }; // ⚠️ remove `otp` in production
+    return { message: 'OTP sent successfully', otp,user }; // ⚠️ remove `otp` in production
   }
 
   // Verify user OTP
