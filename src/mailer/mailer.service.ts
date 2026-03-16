@@ -14,26 +14,36 @@ export class MailService {
     });
   }
 
-  async sendOtpEmail(to: string, name: string, otp: string, expiry = 10) {
-    try {
-      const result = await this.mailerService.sendMail({
-        to,
-        subject: 'Your OTP Code',
-        template: 'otp',
-        context: {
-          name,
-          otp,
-          expiry,
-          appName: 'Cuddlemind',
-        },
-      });
-      console.log('Email sent:', result);
-      return { success: true, result };
-    } catch (error) {
-      console.error('Email sending failed:', error);
-      return { success: false, error: error.message };
-    }
+async sendOtpEmail(to: string, name: string, otp: string, expiry = 10) {
+  try {
+    const result = await this.mailerService.sendMail({
+      to,
+      subject: 'Your OTP Code',
+      template: 'otp',
+      context: {
+        name,
+        otp,
+        expiry,
+        appName: 'Cuddlemind',
+      },
+    });
+
+    console.log('Email sent:', result);
+
+    return {
+      success: true,
+      messageId: result.messageId,
+    };
+
+  } catch (error) {
+    console.error('Email sending failed:', error);
+
+    return {
+      success: false,
+      error: error.message,
+    };
   }
+}
 
   async sendBookingConfirmationEmail(
     to: string,
