@@ -11,7 +11,7 @@ import { ResponseModule } from './response/response.module';
 import { ChatModule } from './chat/chat.module';
 import { PlansModule } from './plans/plans.module';
 import { ReviewModule } from './review/review.module';
-import { StripeModule } from './stripe/stripe.module'; // Razorpay integration
+import { StripeModule } from './stripe/stripe.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { ConsultationSessionsModule } from './consultation-sessions/consultation-sessions.module';
 import { TimeSlotsModule } from './time-slots/time-slots.module';
@@ -21,6 +21,7 @@ import { MailerModule } from './mailer/mailer.module';
 import { AffirmationsModule } from './affirmations/affirmations.module';
 import { MoodSupportModule } from './mood-support/mood-support.module';
 import { ContactUsModule } from './contact-us/contact-us.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { ContactUsModule } from './contact-us/contact-us.module';
     AffirmationsModule,
     MoodSupportModule,
     ContactUsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule { }

@@ -71,6 +71,7 @@ model User {
   status         UserStatus @default(active) @map("status")
   roleId         String     @map("role_id")
   profilePicture String?    @map("profile_picture")
+  fcmToken       String?    @map("fcm_token") // Firebase Cloud Messaging device token
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
   password       String?    @map("password")
@@ -180,19 +181,20 @@ model Transaction {
 }
 
 model Booking {
-  id          String        @id @default(uuid()) @map("id")
-  doctorId    String        @map("doctor_id")
-  patientId   String        @map("patient_id")
-  scheduledAt DateTime      @map("scheduled_at")
-  sessionType SessionType   @map("session_type")
-  type        BookingType   @map("type")
-  status      BookingStatus @default(pending) @map("status")
-  isPaid      Boolean       @default(false) @map("is_paid")
-  paymentType PaymentType   @map("payment_type")
-  userPlanId  String?       @map("user_plan_id")
-  amount      Decimal       @default(0.0) @map("amount")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  id           String        @id @default(uuid()) @map("id")
+  doctorId     String        @map("doctor_id")
+  patientId    String        @map("patient_id")
+  scheduledAt  DateTime      @map("scheduled_at")
+  sessionType  SessionType   @map("session_type")
+  type         BookingType   @map("type")
+  status       BookingStatus @default(pending) @map("status")
+  isPaid       Boolean       @default(false) @map("is_paid")
+  paymentType  PaymentType   @map("payment_type")
+  userPlanId   String?       @map("user_plan_id")
+  amount       Decimal       @default(0.0) @map("amount")
+  reminderSent Boolean       @default(false) @map("reminder_sent") // true after 5-min push notification sent
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
   doctor      User         @relation("DoctorBookings", fields: [doctorId], references: [id])
   patient     User         @relation("PatientBookings", fields: [patientId], references: [id])
@@ -242,7 +244,7 @@ model DoctorUnavailability {
 
 model ChatSession {
   id        String            @id @default(uuid()) @map("id")
-  patientId String            @map("patient_id")
+  patientId String            @unique @map("patient_id") // One persistent session per patient
   supportId String?           @map("support_id")
   startedAt DateTime          @default(now()) @map("started_at")
   endedAt   DateTime?         @map("ended_at")

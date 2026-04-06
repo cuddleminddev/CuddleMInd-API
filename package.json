@@ -52,6 +52,7 @@
     "date-fns-tz": "^2.0.1",
     "dayjs": "^1.11.13",
     "dayjs-plugin-utc": "^0.1.2",
+    "firebase-admin": "^13.7.0",
     "multer": "^2.0.1",
     "nodemailer": "^7.0.12",
     "passport": "^0.7.0",

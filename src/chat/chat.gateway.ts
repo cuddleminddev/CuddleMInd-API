@@ -211,7 +211,8 @@ export class ChatGateway
     const patient = await this.chatService.getUserById(patientId);
     if (!patient) return;
 
-    // Find or create a session for this patient (no support assigned yet)
+    // Always find or create the single persistent session for this patient.
+    // If the session was previously completed, it is reopened as 'pending'.
     const chatSession = await this.chatService.findOrCreateChatSession(patientId);
 
     const timestamp = new Date().toISOString();
@@ -297,6 +298,8 @@ export class ChatGateway
   async handleAcceptChat(
     @MessageBody() payload: { sessionId: string; supportId: string },
   ) {
+    // Assign the new support to the patient's single persistent session.
+    // If the same support double-clicks, assignConsultantToSession returns null.
     const updated = await this.chatService.assignConsultantToSession(
       payload.sessionId,
       payload.supportId,
@@ -311,14 +314,16 @@ export class ChatGateway
     const patientSocket = this.patients.get(updated.patientId);
     const consultantSocket = this.consultants.get(payload.supportId);
 
-    patientSocket?.emit('chat_started', { sessionId: updated.id });
+    // Notify both parties that the chat has started / a new staff member joined
+    patientSocket?.emit('chat_started', { sessionId: updated.id, supportId: payload.supportId });
     consultantSocket?.emit('chat_started', { sessionId: updated.id });
 
+    // Notify other consultants that this patient is now being handled
     for (const [id, sock] of this.consultants.entries()) {
       if (id !== payload.supportId) {
         sock.emit('chat_taken', {
           sessionId: updated.id,
-          patientId: updated.patientId, // 🔄 Added for frontend filtering
+          patientId: updated.patientId,
         });
       }
     }

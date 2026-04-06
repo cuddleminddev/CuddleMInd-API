@@ -22,6 +22,7 @@ import isBetween from 'dayjs/plugin/isBetween';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { StripeService } from 'src/stripe/stripe.service';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -38,6 +39,7 @@ export class BookingsService {
     private prisma: PrismaService,
     @Inject(forwardRef(() => StripeService))
     private stripeService: StripeService,
+    private notificationsService: NotificationsService,
   ) { }
 
   // Create booking with plan or one-time payment
@@ -299,6 +301,18 @@ export class BookingsService {
       });
 
       console.log('🗓️ Consultation session created for booking:', booking.id);
+
+      // 🔔 Notify doctor about the new booking (fire-and-forget)
+      this.notificationsService
+        .notifyDoctorNewBooking(
+          assignedDoctorId,
+          client.name,
+          new Date(scheduledAt),
+          booking.id,
+        )
+        .catch((err) =>
+          console.warn('⚠️ [notify] Failed to send doctor booking notification:', err.message),
+        );
 
       return booking;
     }

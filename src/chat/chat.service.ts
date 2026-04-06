@@ -1,83 +1,61 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
-  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ChatSession, SessionStatusEnum } from '@prisma/client';
+import { ChatSession } from '@prisma/client';
 
 @Injectable()
 export class ChatService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Find or create a chat session for a patient.
-   * Each new chat request creates a fresh session so history stays separate.
-   * The only reuse case is when a patient double-clicks (pending session already
-   * exists and no consultant has taken it yet).
-   */
-  async findOrCreateChatSession(patientId: string, supportId?: string) {
-    if (supportId) {
-      // Called with a specific support — always create a fresh session
-      return this.prisma.chatSession.create({
-        data: {
-          patientId,
-          supportId,
-          status: SessionStatusEnum.ongoing,
-        },
-      });
-    }
+  // ─── Session Management ──────────────────────────────────────────────────────
 
-    // Patient-initiated (no support yet): reuse only if there is already
-    // an unassigned pending session (double-click guard). Otherwise create new.
+  /**
+   * Get or create the single persistent chat session for a patient.
+   *
+   * Every patient has exactly ONE chat session (enforced by the unique
+   * constraint on ChatSession.patientId). When a patient requests a chat
+   * or reconnects, we always return (or create) that single session.
+   *
+   * Staff join/leave the SAME session — no new session is created on each
+   * `accept_chat`. The `supportId` is updated to whoever is currently
+   * handling the chat.
+   */
+  async findOrCreateChatSession(patientId: string): Promise<ChatSession> {
+    // Use raw findFirst + create to avoid the @unique constraint requirement
+    // on `patientId` before the migration runs on production. After migration
+    // this can be simplified to a plain upsert({ where: { patientId } }).
     const existing = await this.prisma.chatSession.findFirst({
-      where: {
-        patientId,
-        supportId: null,
-        status: SessionStatusEnum.pending,
-      },
-      orderBy: { startedAt: 'desc' },
+      where: { patientId },
+      orderBy: { startedAt: 'asc' },
     });
 
-    if (existing) return existing;
+    if (existing) {
+      // Reopen if it was completed / cancelled
+      if (existing.status === 'completed' || existing.status === 'canceled') {
+        return this.prisma.chatSession.update({
+          where: { id: existing.id },
+          data: { status: 'pending', endedAt: null },
+        });
+      }
+      return existing;
+    }
 
     return this.prisma.chatSession.create({
-      data: {
-        patientId,
-        status: SessionStatusEnum.pending,
-      },
+      data: { patientId, status: 'pending' },
     });
   }
 
   /**
-   * Start a session for a patient
-   * Uses findOrCreateChatSession to reuse existing sessions
+   * Assign a consultant/staff member to the patient's single session.
+   * Overwrites any previous support assignment so the latest person is
+   * always the active handler.
    */
-  async startSession(patientId: string): Promise<ChatSession> {
-    // Get or create a session for this patient
-    const session = await this.findOrCreateChatSession(patientId);
-    
-    // If session is not already ongoing, update it
-    if (session.status !== SessionStatusEnum.ongoing) {
-      return this.prisma.chatSession.update({
-        where: { id: session.id },
-        data: {
-          status: SessionStatusEnum.ongoing,
-          startedAt: new Date(),
-        },
-      });
-    }
-    
-    return session;
-  }
-
-  findAvailableSupport() {
-    throw new Error('Method not implemented.');
-  }
-
-  async assignConsultantToSession(sessionId: string, supportId: string) {
-    // Check if the session exists and is still pending
+  async assignConsultantToSession(
+    sessionId: string,
+    supportId: string,
+  ): Promise<ChatSession | null> {
     const session = await this.prisma.chatSession.findUnique({
       where: { id: sessionId },
     });
@@ -86,119 +64,54 @@ export class ChatService {
       throw new NotFoundException('Chat session not found');
     }
 
-    if (session.status !== SessionStatusEnum.pending) {
-      return null; // Indicates session was already taken
+    // Double-click guard: same support already handling this ongoing session
+    if (session.status === 'ongoing' && session.supportId === supportId) {
+      return null;
     }
 
-    // Assign the consultant to this specific pending session.
-    // Never merge into a previous session — each chat request is its own history.
     return this.prisma.chatSession.update({
       where: { id: sessionId },
       data: {
         supportId,
-        status: SessionStatusEnum.ongoing,
+        status: 'ongoing',
         startedAt: new Date(),
+        endedAt: null,
       },
     });
   }
 
-  /**
-   * Get active or most recent session for a patient
-   * Prioritizes ongoing/pending sessions, but returns completed ones if no active session exists
-   */
-  async getActiveSession(patientId: string, supportId?: string): Promise<ChatSession | null> {
-    const where: any = { patientId };
-    
-    if (supportId) {
-      where.supportId = supportId;
-    }
-
-    // First try to find an active session
-    let session = await this.prisma.chatSession.findFirst({
-      where: {
-        ...where,
-        status: { in: ['pending', 'ongoing'] },
-      },
-      orderBy: { startedAt: 'desc' },
-    });
-
-    // If no active session, return the most recent completed session
-    if (!session) {
-      session = await this.prisma.chatSession.findFirst({
-        where,
-        orderBy: { startedAt: 'desc' },
-      });
-    }
-
-    return session;
-  }
-
-  /**
-   * Get or resume a session between two specific users
-   * This allows continuing an existing conversation
-   */
-  async getOrResumeSession(patientId: string, supportId: string): Promise<ChatSession> {
-    return this.findOrCreateChatSession(patientId, supportId);
-  }
-
-  async endChatSession(sessionId: string) {
-    // You can also check if session exists before update if needed
+  async endChatSession(sessionId: string): Promise<ChatSession> {
     return this.prisma.chatSession.update({
       where: { id: sessionId },
-      data: {
-        status: SessionStatusEnum.completed,
-        endedAt: new Date(),
-      },
+      data: { status: 'completed', endedAt: new Date() },
     });
   }
 
-  async getDoctorCardData(doctorId: string) {
-    const doctor = await this.prisma.user.findUnique({
-      where: { id: doctorId },
-      include: {
-        doctorProfile: true,
-      },
-    });
-
-    if (!doctor) return null;
-
-    return {
-      id: doctor.id,
-      name: doctor.name,
-      email: doctor.email,
-      profilePicture: doctor.profilePicture,
-    };
+  async getSessionById(sessionId: string): Promise<ChatSession | null> {
+    return this.prisma.chatSession.findUnique({ where: { id: sessionId } });
   }
+
+  // ─── Messages ────────────────────────────────────────────────────────────────
 
   async saveMessage(sessionId: string, senderId: string, message: string) {
     return this.prisma.chatMessage.create({
-      data: {
-        sessionId,
-        senderId,
-        message,
-      },
+      data: { sessionId, senderId, message },
       include: {
-        sender: {
-          select: { id: true, name: true, role: true },
-        },
+        sender: { select: { id: true, name: true, role: true } },
       },
     });
   }
 
-  async getSessionById(sessionId: string) {
-    return this.prisma.chatSession.findUnique({
-      where: { id: sessionId },
-    });
-  }
-
+  /**
+   * Get the last 100 messages in a session (used on joinSession / reconnect).
+   */
   async getMessagesBySession(sessionId: string) {
     return this.prisma.chatMessage.findMany({
       where: { sessionId },
       orderBy: { createdAt: 'asc' },
+      take: 100,
       include: {
-        sender: {
-          select: { id: true, name: true, role: true },
-        },
+        sender: { select: { id: true, name: true, role: true } },
       },
     });
   }
@@ -221,7 +134,7 @@ export class ChatService {
     });
   }
 
-  //Helper Functions
+  // ─── Helper / Lookup ─────────────────────────────────────────────────────────
 
   async getUserById(id: string) {
     return this.prisma.user.findUnique({
@@ -230,54 +143,45 @@ export class ChatService {
     });
   }
 
+  async getDoctorCardData(doctorId: string) {
+    const doctor = await this.prisma.user.findUnique({
+      where: { id: doctorId },
+      include: { doctorProfile: true },
+    });
+    if (!doctor) return null;
+    return {
+      id: doctor.id,
+      name: doctor.name,
+      email: doctor.email,
+      profilePicture: doctor.profilePicture,
+    };
+  }
+
   async getMessagesBySender(senderId: string) {
-    // Step 1: Find all sessionIds where sender has messages in ongoing sessions
     const senderSessions = await this.prisma.chatMessage.findMany({
       where: {
         senderId,
-        session: {
-          status: 'ongoing',
-        },
+        session: { status: 'ongoing' },
       },
-      select: {
-        sessionId: true,
-      },
+      select: { sessionId: true },
       distinct: ['sessionId'],
     });
 
-    const sessionIds = senderSessions.map((msg) => msg.sessionId);
-
+    const sessionIds = senderSessions.map((m) => m.sessionId);
     if (sessionIds.length === 0) return [];
 
-    // Step 2: Fetch all messages in those sessions
     return this.prisma.chatMessage.findMany({
-      where: {
-        sessionId: { in: sessionIds },
-      },
+      where: { sessionId: { in: sessionIds } },
       orderBy: { createdAt: 'asc' },
       include: {
-        sender: {
-          select: {
-            id: true,
-            name: true,
-            role: true,
-          },
-        },
-        session: {
-          select: {
-            id: true,
-            status: true,
-          },
-        },
+        sender: { select: { id: true, name: true, role: true } },
+        session: { select: { id: true, status: true } },
       },
     });
   }
 
-  // Chat History API Methods
+  // ─── REST History API ─────────────────────────────────────────────────────────
 
-  /**
-   * Get all chat sessions for a user with pagination and filtering
-   */
   async getChatSessions(
     userId: string,
     page: number = 1,
@@ -288,10 +192,7 @@ export class ChatService {
     const where: any = {
       OR: [{ patientId: userId }, { supportId: userId }],
     };
-
-    if (status) {
-      where.status = status;
-    }
+    if (status) where.status = status;
 
     const [sessions, totalCount] = await Promise.all([
       this.prisma.chatSession.findMany({
@@ -301,20 +202,10 @@ export class ChatService {
         orderBy: { startedAt: 'desc' },
         include: {
           patient: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profilePicture: true,
-            },
+            select: { id: true, name: true, email: true, profilePicture: true },
           },
           support: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profilePicture: true,
-            },
+            select: { id: true, name: true, email: true, profilePicture: true },
           },
           ChatMessage: {
             orderBy: { createdAt: 'desc' },
@@ -324,60 +215,45 @@ export class ChatService {
               message: true,
               type: true,
               createdAt: true,
-              sender: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
+              sender: { select: { id: true, name: true } },
             },
           },
-          _count: {
-            select: {
-              ChatMessage: true,
-            },
-          },
+          _count: { select: { ChatMessage: true } },
         },
       }),
       this.prisma.chatSession.count({ where }),
     ]);
 
     const totalPages = Math.ceil(totalCount / limit);
-    const hasNextPage = page < totalPages;
-    const hasPreviousPage = page > 1;
 
     return {
-      sessions: sessions.map((session) => ({
-        id: session.id,
-        status: session.status,
-        startedAt: session.startedAt,
-        endedAt: session.endedAt,
-        patient: session.patient,
-        support: session.support,
-        lastMessage: session.ChatMessage[0] || null,
-        messageCount: session._count.ChatMessage,
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        status: s.status,
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        patient: s.patient,
+        support: s.support,
+        lastMessage: s.ChatMessage[0] || null,
+        messageCount: s._count.ChatMessage,
       })),
       pagination: {
         currentPage: page,
         totalPages,
         totalCount,
-        hasNextPage,
-        hasPreviousPage,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
         limit,
       },
     };
   }
 
-  /**
-   * Get messages in a specific chat session with pagination
-   */
   async getChatMessages(
     sessionId: string,
     userId: string,
     page: number = 1,
-    limit: number = 50,
+    limit: number = 100,
   ) {
-    // First verify that the user has access to this session
     const session = await this.prisma.chatSession.findFirst({
       where: {
         id: sessionId,
@@ -385,12 +261,7 @@ export class ChatService {
       },
       include: {
         patient: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            profilePicture: true,
-          },
+          select: { id: true, name: true, email: true, profilePicture: true },
         },
         support: {
           select: {
@@ -408,8 +279,6 @@ export class ChatService {
       throw new NotFoundException('Chat session not found or access denied');
     }
 
-    // Fetch the most recent consultation session linked to a booking between
-    // the patient and the doctor (support) of this chat session, if any.
     let consultationInfo: any = null;
     if (session.supportId) {
       const booking = await this.prisma.booking.findFirst({
@@ -419,9 +288,7 @@ export class ChatService {
           consultationSession: { isNot: null },
         },
         orderBy: { createdAt: 'desc' },
-        include: {
-          consultationSession: true,
-        },
+        include: { consultationSession: true },
       });
       if (booking?.consultationSession) {
         consultationInfo = booking.consultationSession;
@@ -444,11 +311,7 @@ export class ChatService {
               name: true,
               email: true,
               profilePicture: true,
-              role: {
-                select: {
-                  name: true,
-                },
-              },
+              role: { select: { name: true } },
             },
           },
         },
@@ -457,8 +320,6 @@ export class ChatService {
     ]);
 
     const totalPages = Math.ceil(totalCount / limit);
-    const hasNextPage = page < totalPages;
-    const hasPreviousPage = page > 1;
 
     return {
       sessionInfo: {
@@ -470,26 +331,26 @@ export class ChatService {
         patient: session.patient ?? null,
         consultationInfo,
       },
-      messages: messages.map((message) => ({
-        id: message.id,
-        message: message.message,
-        type: message.type,
-        payload: message.payload,
-        createdAt: message.createdAt,
+      messages: messages.map((m) => ({
+        id: m.id,
+        message: m.message,
+        type: m.type,
+        payload: m.payload,
+        createdAt: m.createdAt,
         sender: {
-          id: message.sender.id,
-          name: message.sender.name,
-          email: message.sender.email,
-          profilePicture: message.sender.profilePicture,
-          role: message.sender.role.name,
+          id: m.sender.id,
+          name: m.sender.name,
+          email: m.sender.email,
+          profilePicture: m.sender.profilePicture,
+          role: m.sender.role.name,
         },
       })),
       pagination: {
         currentPage: page,
         totalPages,
         totalCount,
-        hasNextPage,
-        hasPreviousPage,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
         limit,
       },
     };

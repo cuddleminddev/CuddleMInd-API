@@ -4,10 +4,10 @@ import { BookingsController } from './bookings.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ResponseModule } from 'src/response/response.module';
 import { UsersModule } from 'src/users/users.module';
-import { PaymentsModule } from 'src/payments/payments.module';
 import { StripeModule } from 'src/stripe/stripe.module';
 import { PlansModule } from 'src/plans/plans.module';
 import { BookingCleanupService } from './booking-cleanup.service';
+import { NotificationsModule } from 'src/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -16,6 +16,7 @@ import { BookingCleanupService } from './booking-cleanup.service';
     UsersModule,
     forwardRef(() => StripeModule),
     PlansModule,
+    NotificationsModule,
   ],
   controllers: [BookingsController],
   providers: [BookingsService, BookingCleanupService],

@@ -11,6 +11,7 @@ import { BookingStatus, PaymentType, TransactionStatus } from '@prisma/client';
 import { BookingsService } from 'src/bookings/bookings.service';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { NotificationsService } from 'src/notifications/notifications.service';
 
 @Injectable()
 export class StripeService {
@@ -22,6 +23,7 @@ export class StripeService {
     @Inject(forwardRef(() => BookingsService))
     private bookingsService: BookingsService,
     private eventEmitter: EventEmitter2,
+    private notificationsService: NotificationsService,
   ) {
     this.razorpay = new Razorpay({
       key_id: this.configService.get<string>('RAZORPAY_KEY_ID'),
@@ -227,6 +229,22 @@ export class StripeService {
             sessionType: booking.sessionType,
           });
           console.log('[CAPTURED] [PLAN] ✅ Pending booking confirmed via plan purchase webhook:', notes.bookingId);
+
+          // 🔔 Push notification to doctor (fire-and-forget)
+          const patientUser = await this.prisma.user.findUnique({
+            where: { id: booking.patientId },
+            select: { name: true },
+          });
+          this.notificationsService
+            .notifyDoctorNewBooking(
+              booking.doctorId,
+              patientUser?.name ?? 'A patient',
+              booking.scheduledAt,
+              booking.id,
+            )
+            .catch((err) =>
+              console.warn('[CAPTURED] [PLAN] ⚠️ Doctor push notification failed:', err.message),
+            );
         } else {
           console.warn('[CAPTURED] [PLAN] ⚠️  Booking not found for id:', notes.bookingId);
         }
@@ -284,6 +302,22 @@ export class StripeService {
         sessionType: booking.sessionType,
       });
       console.log('[CAPTURED] [ONE_TIME] ✅ payment.confirmed event emitted.');
+
+      // 🔔 Push notification to doctor (fire-and-forget)
+      const patientUser = await this.prisma.user.findUnique({
+        where: { id: booking.patientId },
+        select: { name: true },
+      });
+      this.notificationsService
+        .notifyDoctorNewBooking(
+          booking.doctorId,
+          patientUser?.name ?? 'A patient',
+          booking.scheduledAt,
+          booking.id,
+        )
+        .catch((err) =>
+          console.warn('[CAPTURED] [ONE_TIME] ⚠️ Doctor push notification failed:', err.message),
+        );
     } else if (type === PaymentType.one_time && !notes.bookingId) {
       console.warn('[CAPTURED] [ONE_TIME] ⚠️  type=one_time but no bookingId in notes!');
     }
