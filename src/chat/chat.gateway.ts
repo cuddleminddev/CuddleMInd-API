@@ -385,8 +385,28 @@ export class ChatGateway
     console.log(`Client ${client.id} joined session ${sessionId}`);
 
     const messages = await this.chatService.getMessagesBySession(sessionId);
-    console.log(sessionId, messages);
-    client.emit('chat_history', messages);
+
+    // Replay the last 100 messages as individual receive_message events
+    // so the frontend only needs one listener (receive_message) for both
+    // historical and live messages.
+    for (const msg of messages) {
+      client.emit('receive_message', {
+        sessionId,
+        senderId: msg.senderId,
+        senderName: msg.sender?.name ?? '',
+        message: msg.message,
+        type: msg.type,
+        payload: msg.payload ?? null,
+        timestamp: msg.createdAt,
+        isHistory: true,
+      });
+    }
+
+    // Signal that history replay is complete
+    client.emit('history_loaded', {
+      sessionId,
+      count: messages.length,
+    });
   }
 
   @SubscribeMessage('get_connected_doctors')
@@ -446,7 +466,21 @@ export class ChatGateway
       payload.sessionId,
     );
 
-    client.emit('chat_history', messages);
+    // Same replay pattern as joinSession
+    for (const msg of messages) {
+      client.emit('receive_message', {
+        sessionId: payload.sessionId,
+        senderId: msg.senderId,
+        senderName: msg.sender?.name ?? '',
+        message: msg.message,
+        type: msg.type,
+        payload: msg.payload ?? null,
+        timestamp: msg.createdAt,
+        isHistory: true,
+      });
+    }
+
+    client.emit('history_loaded', { sessionId: payload.sessionId, count: messages.length });
     client.emit('rejoined_session', { sessionId: payload.sessionId });
   }
 
