@@ -215,6 +215,12 @@ export class ChatGateway
     // If the session was previously completed, it is reopened as 'pending'.
     const chatSession = await this.chatService.findOrCreateChatSession(patientId);
 
+    // Ensure the patient is in the socket.io room right away
+    const patientSocket = this.patients.get(patientId);
+    if (patientSocket) {
+      patientSocket.join(chatSession.id);
+    }
+
     const timestamp = new Date().toISOString();
 
     if (this.consultants.size === 0) {
@@ -312,7 +318,10 @@ export class ChatGateway
     }
 
     const patientSocket = this.patients.get(updated.patientId);
+    if (patientSocket) patientSocket.join(payload.sessionId);
+
     const consultantSocket = this.consultants.get(payload.supportId);
+    if (consultantSocket) consultantSocket.join(payload.sessionId);
 
     // Notify both parties that the chat has started / a new staff member joined
     patientSocket?.emit('chat_started', { sessionId: updated.id, supportId: payload.supportId });
@@ -346,6 +355,19 @@ export class ChatGateway
         payload.senderId,
         payload.message,
       );
+
+      const session = await this.chatService.getSessionById(payload.sessionId);
+      if (session) {
+        // Guarantee both participants are in the socket.io room 
+        // in case the frontend missed calling `joinSession`
+        const patientSocket = this.patients.get(session.patientId);
+        if (patientSocket) patientSocket.join(payload.sessionId);
+
+        if (session.supportId) {
+          const supportSocket = this.consultants.get(session.supportId);
+          if (supportSocket) supportSocket.join(payload.sessionId);
+        }
+      }
 
       const emitPayload = {
         sessionId: payload.sessionId,
