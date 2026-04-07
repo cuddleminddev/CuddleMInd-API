@@ -13,39 +13,35 @@ export class ChatService {
 
   /**
    * Find or create a chat session for a patient.
-   * Each new chat request creates a fresh session so history stays separate.
-   * The only reuse case is when a patient double-clicks (pending session already
-   * exists and no consultant has taken it yet).
+   * NOTE: `chat_sessions.patient_id` is unique in DB, so only one session can
+   * exist per patient until that constraint is removed via migration.
    */
   async findOrCreateChatSession(patientId: string, supportId?: string) {
-    if (supportId) {
-      // Called with a specific support — always create a fresh session
+    const existing = await this.prisma.chatSession.findUnique({
+      where: { patientId },
+    });
+
+    if (!existing) {
       return this.prisma.chatSession.create({
         data: {
           patientId,
           supportId,
-          status: SessionStatusEnum.ongoing,
+          status: supportId
+            ? SessionStatusEnum.ongoing
+            : SessionStatusEnum.pending,
         },
       });
     }
 
-    // Patient-initiated (no support yet): reuse only if there is already
-    // an unassigned pending session (double-click guard). Otherwise create new.
-    const existing = await this.prisma.chatSession.findFirst({
-      where: {
-        patientId,
-        supportId: null,
-        status: SessionStatusEnum.pending,
-      },
-      orderBy: { startedAt: 'desc' },
-    });
-
-    if (existing) return existing;
-
-    return this.prisma.chatSession.create({
+    return this.prisma.chatSession.update({
+      where: { id: existing.id },
       data: {
-        patientId,
-        status: SessionStatusEnum.pending,
+        supportId: supportId ?? existing.supportId,
+        status: supportId
+          ? SessionStatusEnum.ongoing
+          : SessionStatusEnum.pending,
+        startedAt: new Date(),
+        endedAt: null,
       },
     });
   }
