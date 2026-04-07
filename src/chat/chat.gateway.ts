@@ -312,14 +312,6 @@ export class ChatGateway
       return;
     }
 
-    // Persist as a doctor_card message so it appears in chat history API
-    await this.chatService.saveDoctorCardMessage(sessionId, doctorId, {
-      id: doctor.id,
-      name: doctor.name,
-      email: doctor.email,
-      profilePicture: doctor.profilePicture,
-    });
-
     const emitPayload = {
       sessionId,
       doctorId,
@@ -331,6 +323,9 @@ export class ChatGateway
       bookingType: latestBooking?.type ?? null,
       bookingId: latestBooking?.id ?? null,
     };
+
+    // Persist for history replay with bookingType-aware event routing.
+    await this.chatService.saveDoctorCardMessage(sessionId, doctorId, emitPayload);
 
     await this.chatService.saveSystemEventMessage(
       sessionId,
@@ -492,21 +487,38 @@ export class ChatGateway
 
       if (message.type === 'doctor_card') {
         const storedPayload = (message.payload as any) ?? {};
-        const doctor = storedPayload?.doctor ?? storedPayload;
+        const bookingType = storedPayload?.booking?.type ?? storedPayload?.bookingType ?? null;
 
-        client.emit('receive_doctor_card', {
-          sessionId: message.sessionId,
-          doctor,
-          booking: storedPayload?.booking ?? null,
-          paymentOrder: storedPayload?.paymentOrder ?? null,
-        });
+        if (bookingType === BookingType.instant) {
+          const doctor = storedPayload?.doctor ?? storedPayload;
+          client.emit('receive_doctor_card', {
+            sessionId: message.sessionId,
+            doctor,
+            booking: storedPayload?.booking ?? null,
+            paymentOrder: storedPayload?.paymentOrder ?? null,
+          });
+        } else {
+          client.emit('receive_consultant_info', {
+            sessionId: message.sessionId,
+            doctorId: storedPayload?.doctorId ?? storedPayload?.doctor?.id ?? null,
+            name: storedPayload?.name ?? storedPayload?.doctor?.name ?? null,
+            email: storedPayload?.email ?? storedPayload?.doctor?.email ?? null,
+            profilePicture:
+              storedPayload?.profilePicture ?? storedPayload?.doctor?.profilePicture ?? null,
+            paymentStatus: storedPayload?.paymentStatus ?? null,
+            bookingStatus: storedPayload?.bookingStatus ?? storedPayload?.booking?.status ?? null,
+            bookingType,
+            bookingId: storedPayload?.bookingId ?? storedPayload?.booking?.id ?? null,
+          });
+        }
         continue;
       }
 
       if (message.type === 'system') {
         const payload = message.payload as any;
         if (typeof payload?.event === 'string') {
-          client.emit(payload.event, payload);
+          const { event, ...eventPayload } = payload;
+          client.emit(event, eventPayload);
         }
       }
     }
