@@ -161,13 +161,6 @@ export class ChatGateway
         patientId,
       );
 
-      await this.chatService.saveDoctorCardMessage(sessionId, doctorId, {
-        id: doctor.id,
-        name: doctor.name,
-        email: doctor.email,
-        profilePicture: doctor.profilePicture,
-      });
-
       console.log('✅ Booking created successfully:', bookingResult);
     } catch (error) {
       console.error('❌ Booking creation failed:', error.message);
@@ -193,6 +186,8 @@ export class ChatGateway
       // It contains { orderId, amount, currency, keyId } needed by Razorpay SDK.
       paymentOrder: bookingResult.paymentOrder ?? null,
     };
+
+    await this.chatService.saveDoctorCardMessage(sessionId, doctorId, emitPayload);
 
     console.log('📤 Emitting receive_doctor_card to patient socket:', {
       socketId: patientSocket.id,
@@ -438,16 +433,7 @@ export class ChatGateway
     const messages = await this.chatService.getMessagesBySession(sessionId);
     console.log(sessionId, messages);
     client.emit('chat_history', messages);
-
-    for (const message of messages) {
-      const payload = message.payload as any;
-      if (message.type === 'system' && payload?.event === 'receive_consultant_info') {
-        client.emit('receive_consultant_info', payload);
-      }
-      if (message.type === 'system' && payload?.event === 'consultant_info_error') {
-        client.emit('consultant_info_error', payload);
-      }
-    }
+    this.emitMessageHistoryAsEvents(client, messages);
   }
 
   @SubscribeMessage('get_connected_doctors')
@@ -491,6 +477,41 @@ export class ChatGateway
     this.server.emit('connected_doctors_list', doctors);
   }
 
+  private emitMessageHistoryAsEvents(client: Socket, messages: any[]) {
+    for (const message of messages) {
+      if (message.type === 'text') {
+        client.emit('receive_message', {
+          sessionId: message.sessionId,
+          senderId: message.senderId,
+          senderName: message.sender?.name ?? null,
+          message: message.message,
+          timestamp: message.createdAt,
+        });
+        continue;
+      }
+
+      if (message.type === 'doctor_card') {
+        const storedPayload = (message.payload as any) ?? {};
+        const doctor = storedPayload?.doctor ?? storedPayload;
+
+        client.emit('receive_doctor_card', {
+          sessionId: message.sessionId,
+          doctor,
+          booking: storedPayload?.booking ?? null,
+          paymentOrder: storedPayload?.paymentOrder ?? null,
+        });
+        continue;
+      }
+
+      if (message.type === 'system') {
+        const payload = message.payload as any;
+        if (typeof payload?.event === 'string') {
+          client.emit(payload.event, payload);
+        }
+      }
+    }
+  }
+
   @SubscribeMessage('rejoin_session')
   async handleRejoinSession(
     @MessageBody() payload: { sessionId: string; userId: string },
@@ -508,16 +529,7 @@ export class ChatGateway
     );
 
     client.emit('chat_history', messages);
-
-    for (const message of messages) {
-      const msgPayload = message.payload as any;
-      if (message.type === 'system' && msgPayload?.event === 'receive_consultant_info') {
-        client.emit('receive_consultant_info', msgPayload);
-      }
-      if (message.type === 'system' && msgPayload?.event === 'consultant_info_error') {
-        client.emit('consultant_info_error', msgPayload);
-      }
-    }
+    this.emitMessageHistoryAsEvents(client, messages);
 
     client.emit('rejoined_session', { sessionId: payload.sessionId });
   }
@@ -550,8 +562,8 @@ export class ChatGateway
     bookingId: string;
     scheduledAt: Date;
     doctorId: string;
-    sessionType?: string;
-    bookingType?: string;
+    sessionType?: SessionType;
+    bookingType?: BookingType;
   }) {
     // ── 1. Notify patient ─────────────────────────────────────────────────
     const patientSocket = this.patients.get(payload.patientId);
@@ -564,7 +576,8 @@ export class ChatGateway
         paymentStatus: 'paid',
         scheduledAt: payload.scheduledAt,
         doctorId: payload.doctorId,
-        bookingType: payload.bookingType ?? null,
+        sessionType: payload.sessionType ?? SessionType.video,
+        bookingType: payload.bookingType ?? BookingType.normal,
       });
       console.log(`🔔 [payment.confirmed] Emitted to patient ${payload.patientId}`);
     }
@@ -592,8 +605,8 @@ export class ChatGateway
       patientName,
       doctorId: payload.doctorId,
       bookingId: payload.bookingId,
-      sessionType: payload.sessionType ?? 'video',
-      bookingType: payload.bookingType ?? null,
+      sessionType: payload.sessionType ?? SessionType.video,
+      bookingType: payload.bookingType ?? BookingType.normal,
       paymentStatus: 'paid',
       zegocloudRoomId,
       scheduledAt: payload.scheduledAt,
