@@ -211,15 +211,8 @@ export class ChatGateway
     const patient = await this.chatService.getUserById(patientId);
     if (!patient) return;
 
-    // Always find or create the single persistent session for this patient.
-    // If the session was previously completed, it is reopened as 'pending'.
+    // Find or create a session for this patient (no support assigned yet)
     const chatSession = await this.chatService.findOrCreateChatSession(patientId);
-
-    // Ensure the patient is in the socket.io room right away
-    const patientSocket = this.patients.get(patientId);
-    if (patientSocket) {
-      patientSocket.join(chatSession.id);
-    }
 
     const timestamp = new Date().toISOString();
 
@@ -249,14 +242,48 @@ export class ChatGateway
     @ConnectedSocket() client: Socket,
   ) {
     const { sessionId, patientId, doctorId } = payload;
+    const consultantId = (client.handshake.query.userId as string) || doctorId;
+
+    const latestBooking = await this.prisma.booking.findFirst({
+      where: {
+        patientId,
+        doctorId,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        isPaid: true,
+        status: true,
+        type: true,
+      },
+    });
+
+    const paymentStatus = latestBooking
+      ? latestBooking.isPaid || ['confirmed', 'completed'].includes(latestBooking.status)
+        ? 'paid'
+        : latestBooking.status === 'failed'
+          ? 'failed'
+          : 'pending'
+      : 'pending';
 
     const patientSocket = this.patients.get(patientId);
     if (!patientSocket) {
       console.error('❌ Patient socket not found:', patientId);
-      client.emit('consultant_info_error', {
+      const errorPayload = {
         sessionId,
         message: 'Patient is not connected',
-      });
+        paymentStatus,
+        bookingStatus: latestBooking?.status ?? null,
+        bookingType: latestBooking?.type ?? null,
+        bookingId: latestBooking?.id ?? null,
+      };
+      await this.chatService.saveSystemEventMessage(
+        sessionId,
+        consultantId,
+        'consultant_info_error',
+        errorPayload,
+      );
+      client.emit('consultant_info_error', errorPayload);
       return;
     }
 
@@ -272,10 +299,21 @@ export class ChatGateway
 
     if (!doctor) {
       console.error('❌ Doctor not found:', doctorId);
-      client.emit('consultant_info_error', {
+      const errorPayload = {
         sessionId,
         message: 'Doctor not found',
-      });
+        paymentStatus,
+        bookingStatus: latestBooking?.status ?? null,
+        bookingType: latestBooking?.type ?? null,
+        bookingId: latestBooking?.id ?? null,
+      };
+      await this.chatService.saveSystemEventMessage(
+        sessionId,
+        consultantId,
+        'consultant_info_error',
+        errorPayload,
+      );
+      client.emit('consultant_info_error', errorPayload);
       return;
     }
 
@@ -293,7 +331,18 @@ export class ChatGateway
       name: doctor.name,
       email: doctor.email,
       profilePicture: doctor.profilePicture,
+      paymentStatus,
+      bookingStatus: latestBooking?.status ?? null,
+      bookingType: latestBooking?.type ?? null,
+      bookingId: latestBooking?.id ?? null,
     };
+
+    await this.chatService.saveSystemEventMessage(
+      sessionId,
+      consultantId,
+      'receive_consultant_info',
+      emitPayload,
+    );
 
     patientSocket.emit('receive_consultant_info', emitPayload);
 
@@ -304,8 +353,6 @@ export class ChatGateway
   async handleAcceptChat(
     @MessageBody() payload: { sessionId: string; supportId: string },
   ) {
-    // Assign the new support to the patient's single persistent session.
-    // If the same support double-clicks, assignConsultantToSession returns null.
     const updated = await this.chatService.assignConsultantToSession(
       payload.sessionId,
       payload.supportId,
@@ -318,21 +365,16 @@ export class ChatGateway
     }
 
     const patientSocket = this.patients.get(updated.patientId);
-    if (patientSocket) patientSocket.join(payload.sessionId);
-
     const consultantSocket = this.consultants.get(payload.supportId);
-    if (consultantSocket) consultantSocket.join(payload.sessionId);
 
-    // Notify both parties that the chat has started / a new staff member joined
-    patientSocket?.emit('chat_started', { sessionId: updated.id, supportId: payload.supportId });
+    patientSocket?.emit('chat_started', { sessionId: updated.id });
     consultantSocket?.emit('chat_started', { sessionId: updated.id });
 
-    // Notify other consultants that this patient is now being handled
     for (const [id, sock] of this.consultants.entries()) {
       if (id !== payload.supportId) {
         sock.emit('chat_taken', {
           sessionId: updated.id,
-          patientId: updated.patientId,
+          patientId: updated.patientId, // 🔄 Added for frontend filtering
         });
       }
     }
@@ -355,19 +397,6 @@ export class ChatGateway
         payload.senderId,
         payload.message,
       );
-
-      const session = await this.chatService.getSessionById(payload.sessionId);
-      if (session) {
-        // Guarantee both participants are in the socket.io room 
-        // in case the frontend missed calling `joinSession`
-        const patientSocket = this.patients.get(session.patientId);
-        if (patientSocket) patientSocket.join(payload.sessionId);
-
-        if (session.supportId) {
-          const supportSocket = this.consultants.get(session.supportId);
-          if (supportSocket) supportSocket.join(payload.sessionId);
-        }
-      }
 
       const emitPayload = {
         sessionId: payload.sessionId,
@@ -407,28 +436,18 @@ export class ChatGateway
     console.log(`Client ${client.id} joined session ${sessionId}`);
 
     const messages = await this.chatService.getMessagesBySession(sessionId);
+    console.log(sessionId, messages);
+    client.emit('chat_history', messages);
 
-    // Replay the last 100 messages as individual receive_message events
-    // so the frontend only needs one listener (receive_message) for both
-    // historical and live messages.
-    for (const msg of messages) {
-      client.emit('receive_message', {
-        sessionId,
-        senderId: msg.senderId,
-        senderName: msg.sender?.name ?? '',
-        message: msg.message,
-        type: msg.type,
-        payload: msg.payload ?? null,
-        timestamp: msg.createdAt,
-        isHistory: true,
-      });
+    for (const message of messages) {
+      const payload = message.payload as any;
+      if (message.type === 'system' && payload?.event === 'receive_consultant_info') {
+        client.emit('receive_consultant_info', payload);
+      }
+      if (message.type === 'system' && payload?.event === 'consultant_info_error') {
+        client.emit('consultant_info_error', payload);
+      }
     }
-
-    // Signal that history replay is complete
-    client.emit('history_loaded', {
-      sessionId,
-      count: messages.length,
-    });
   }
 
   @SubscribeMessage('get_connected_doctors')
@@ -488,21 +507,18 @@ export class ChatGateway
       payload.sessionId,
     );
 
-    // Same replay pattern as joinSession
-    for (const msg of messages) {
-      client.emit('receive_message', {
-        sessionId: payload.sessionId,
-        senderId: msg.senderId,
-        senderName: msg.sender?.name ?? '',
-        message: msg.message,
-        type: msg.type,
-        payload: msg.payload ?? null,
-        timestamp: msg.createdAt,
-        isHistory: true,
-      });
+    client.emit('chat_history', messages);
+
+    for (const message of messages) {
+      const msgPayload = message.payload as any;
+      if (message.type === 'system' && msgPayload?.event === 'receive_consultant_info') {
+        client.emit('receive_consultant_info', msgPayload);
+      }
+      if (message.type === 'system' && msgPayload?.event === 'consultant_info_error') {
+        client.emit('consultant_info_error', msgPayload);
+      }
     }
 
-    client.emit('history_loaded', { sessionId: payload.sessionId, count: messages.length });
     client.emit('rejoined_session', { sessionId: payload.sessionId });
   }
 
@@ -535,6 +551,7 @@ export class ChatGateway
     scheduledAt: Date;
     doctorId: string;
     sessionType?: string;
+    bookingType?: string;
   }) {
     // ── 1. Notify patient ─────────────────────────────────────────────────
     const patientSocket = this.patients.get(payload.patientId);
@@ -544,8 +561,10 @@ export class ChatGateway
       patientSocket.emit('payment_confirmed', {
         bookingId: payload.bookingId,
         status: 'confirmed',
+        paymentStatus: 'paid',
         scheduledAt: payload.scheduledAt,
         doctorId: payload.doctorId,
+        bookingType: payload.bookingType ?? null,
       });
       console.log(`🔔 [payment.confirmed] Emitted to patient ${payload.patientId}`);
     }
@@ -574,6 +593,8 @@ export class ChatGateway
       doctorId: payload.doctorId,
       bookingId: payload.bookingId,
       sessionType: payload.sessionType ?? 'video',
+      bookingType: payload.bookingType ?? null,
+      paymentStatus: 'paid',
       zegocloudRoomId,
       scheduledAt: payload.scheduledAt,
     });
