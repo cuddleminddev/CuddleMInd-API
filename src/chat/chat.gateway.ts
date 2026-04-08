@@ -324,9 +324,6 @@ export class ChatGateway
       bookingId: latestBooking?.id ?? null,
     };
 
-    // Persist for history replay with bookingType-aware event routing.
-    await this.chatService.saveDoctorCardMessage(sessionId, doctorId, emitPayload);
-
     await this.chatService.saveSystemEventMessage(
       sessionId,
       consultantId,
@@ -473,6 +470,17 @@ export class ChatGateway
   }
 
   private emitMessageHistoryAsEvents(client: Socket, messages: any[]) {
+    const consultantInfoKeys = new Set<string>();
+
+    for (const message of messages) {
+      if (message.type !== 'system') continue;
+      const payload = message.payload as any;
+      if (payload?.event !== 'receive_consultant_info') continue;
+
+      const key = `${message.sessionId}:${payload?.bookingId ?? 'no-booking'}:${payload?.doctorId ?? 'no-doctor'}`;
+      consultantInfoKeys.add(key);
+    }
+
     for (const message of messages) {
       if (message.type === 'text') {
         client.emit('receive_message', {
@@ -488,8 +496,10 @@ export class ChatGateway
       if (message.type === 'doctor_card') {
         const storedPayload = (message.payload as any) ?? {};
         const bookingType = storedPayload?.booking?.type ?? storedPayload?.bookingType ?? null;
+        const normalizedBookingType =
+          typeof bookingType === 'string' ? bookingType.toLowerCase() : bookingType;
 
-        if (bookingType === BookingType.instant) {
+        if (normalizedBookingType === BookingType.instant) {
           const doctor = storedPayload?.doctor ?? storedPayload;
           client.emit('receive_doctor_card', {
             sessionId: message.sessionId,
@@ -498,6 +508,11 @@ export class ChatGateway
             paymentOrder: storedPayload?.paymentOrder ?? null,
           });
         } else {
+          const key = `${message.sessionId}:${storedPayload?.bookingId ?? storedPayload?.booking?.id ?? 'no-booking'}:${storedPayload?.doctorId ?? storedPayload?.doctor?.id ?? 'no-doctor'}`;
+          if (consultantInfoKeys.has(key)) {
+            continue;
+          }
+
           client.emit('receive_consultant_info', {
             sessionId: message.sessionId,
             doctorId: storedPayload?.doctorId ?? storedPayload?.doctor?.id ?? null,

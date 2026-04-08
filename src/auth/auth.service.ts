@@ -29,6 +29,10 @@ export class AuthService {
       where: { email: data.email },
     });
 
+    if (user?.status === UserStatus.active) {
+      throw new ConflictException('User already registered');
+    }
+
     if (!user) {
       const roleExist = await this.prisma.role.findUnique({
         where: { name: data.role },

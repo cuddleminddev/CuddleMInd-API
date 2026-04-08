@@ -249,21 +249,27 @@ export class ChatService {
   }
 
   async getMessagesBySender(senderId: string) {
-    // Step 1: Find all sessionIds where sender has messages in ongoing sessions
-    const senderSessions = await this.prisma.chatMessage.findMany({
+    // Include all sessions this user is part of (patient/support) and
+    // any legacy sessions where they have sent messages.
+    const participantSessions = await this.prisma.chatSession.findMany({
       where: {
-        senderId,
-        session: {
-          status: 'ongoing',
-        },
+        OR: [{ patientId: senderId }, { supportId: senderId }],
       },
-      select: {
-        sessionId: true,
-      },
+      select: { id: true },
+    });
+
+    const senderSessions = await this.prisma.chatMessage.findMany({
+      where: { senderId },
+      select: { sessionId: true },
       distinct: ['sessionId'],
     });
 
-    const sessionIds = senderSessions.map((msg) => msg.sessionId);
+    const sessionIds = Array.from(
+      new Set([
+        ...participantSessions.map((session) => session.id),
+        ...senderSessions.map((msg) => msg.sessionId),
+      ]),
+    );
 
     if (sessionIds.length === 0) return [];
 
