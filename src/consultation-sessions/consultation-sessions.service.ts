@@ -3,6 +3,7 @@ import { CreateConsultationSessionDto } from './dto/create-consultation-session.
 import { UpdateConsultationSessionDto } from './dto/update-consultation-session.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ChatGateway } from 'src/chat/chat.gateway';
+import { BookingType } from '@prisma/client';
 
 @Injectable()
 export class ConsultationSessionsService {
@@ -12,12 +13,6 @@ export class ConsultationSessionsService {
   ) { }
 
   async startSession(bookingId: string, createdBy: string) {
-    const existing = await this.prisma.consultationSession.findUnique({
-      where: { bookingId },
-    });
-
-    if (existing) return existing;
-
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
       include: { doctor: true, patient: true },
@@ -25,25 +20,36 @@ export class ConsultationSessionsService {
 
     if (!booking) throw new NotFoundException('Booking not found');
 
-    const session = await this.prisma.consultationSession.create({
-      data: {
-        bookingId,
-        date: new Date(),
-        status: 'pending',
-        sessionType: booking.sessionType,
-        zegocloudRoomId: `zego-${bookingId}`,
-        createdBy,
-      },
+    const existing = await this.prisma.consultationSession.findUnique({
+      where: { bookingId },
     });
 
-    // 🔔 Send WebSocket notification if it's an instant booking
-    if (booking.type === 'instant') {
+    const session =
+      existing ??
+      (await this.prisma.consultationSession.create({
+        data: {
+          bookingId,
+          date: new Date(),
+          status: 'pending',
+          sessionType: booking.sessionType,
+          zegocloudRoomId: `zego-${bookingId}`,
+          createdBy,
+        },
+      }));
+
+    // Notify doctor from /consultation-sessions/start too for instant bookings.
+    if (booking.type === BookingType.instant) {
       this.chatGateway.notifyDoctorOfInstantSession(booking.doctorId, {
-        sessionId: session.id,
+        sessionId: booking.id,
         patientId: booking.patientId,
-        patientName: booking.patient.name,
+        patientName: booking.patient?.name ?? '',
         doctorId: booking.doctorId,
         bookingId: booking.id,
+        sessionType: booking.sessionType,
+        bookingType: booking.type,
+        paymentStatus: booking.isPaid ? 'paid' : 'pending',
+        zegocloudRoomId: session.zegocloudRoomId ?? `zego-${bookingId}`,
+        scheduledAt: booking.scheduledAt,
       });
     }
 
