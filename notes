@@ -1,0 +1,4 @@
+booking should assign in queue
+price and duration need to make dynamic
+reminder is currently push notification, need to add email reminder as well
+need to send mail to doctor on booking confirmation and cancellation

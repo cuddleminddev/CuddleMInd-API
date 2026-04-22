@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from './notifications.service';
+import { MailService } from 'src/mailer/mailer.service';
 
 /**
  * BookingReminderService
@@ -20,7 +21,8 @@ export class BookingReminderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-  ) {}
+    private readonly mailService: MailService,
+  ) { }
 
   /**
    * Runs every minute.
@@ -43,8 +45,8 @@ export class BookingReminderService {
         reminderSent: false,
       },
       include: {
-        doctor: { select: { id: true, name: true, fcmToken: true } },
-        patient: { select: { id: true, name: true, fcmToken: true } },
+        doctor: { select: { id: true, name: true, email: true, fcmToken: true } },
+        patient: { select: { id: true, name: true, email: true, fcmToken: true } },
       },
     });
 
@@ -65,6 +67,25 @@ export class BookingReminderService {
           booking.id,
         );
 
+        await Promise.allSettled([
+          this.mailService.sendBookingReminderEmail({
+            to: booking.doctor.email,
+            recipientName: booking.doctor.name,
+            otherPartyName: booking.patient.name,
+            scheduledAt: booking.scheduledAt,
+            role: 'doctor',
+            bookingId: booking.id,
+          }),
+          this.mailService.sendBookingReminderEmail({
+            to: booking.patient.email,
+            recipientName: booking.patient.name,
+            otherPartyName: booking.doctor.name,
+            scheduledAt: booking.scheduledAt,
+            role: 'patient',
+            bookingId: booking.id,
+          }),
+        ]);
+
         // Mark reminder as sent so we don't re-notify on the next cron tick
         await this.prisma.booking.update({
           where: { id: booking.id },
@@ -73,7 +94,7 @@ export class BookingReminderService {
 
         this.logger.log(
           `✅ Reminder sent for booking ${booking.id} ` +
-            `(doctor: ${booking.doctor.name}, patient: ${booking.patient.name})`,
+          `(doctor: ${booking.doctor.name}, patient: ${booking.patient.name})`,
         );
       } catch (err) {
         this.logger.error(

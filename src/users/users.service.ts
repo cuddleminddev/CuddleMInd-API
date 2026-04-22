@@ -51,6 +51,19 @@ export class UsersService {
     if (!roleEntity) throw new NotFoundException('Role not found');
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const isDoctor = roleEntity.name === 'doctor';
+
+    const bookingQueueOrder = isDoctor
+      ? ((await this.prisma.user.aggregate({
+        where: {
+          role: { name: 'doctor' },
+          status: 'active',
+        },
+        _max: {
+          bookingQueueOrder: true,
+        },
+      }))._max.bookingQueueOrder ?? 0) + 1
+      : undefined;
 
     const user = await this.prisma.user.create({
       data: {
@@ -59,6 +72,9 @@ export class UsersService {
         phone,
         password: hashedPassword,
         roleId: roleEntity.id,
+        ...(bookingQueueOrder !== undefined
+          ? { bookingQueueOrder }
+          : {}),
       },
       include: { role: true },
     });
@@ -163,6 +179,11 @@ export class UsersService {
         },
         status: 'active',
       },
+      orderBy: [
+        { bookingQueueOrder: 'asc' },
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
       include: {
         doctorProfile: true,
       },
@@ -174,6 +195,14 @@ export class UsersService {
   async findByRole(roleName: string) {
     const users = await this.prisma.user.findMany({
       where: { role: { name: roleName } },
+      orderBy:
+        roleName === 'doctor'
+          ? [
+            { bookingQueueOrder: 'asc' },
+            { createdAt: 'asc' },
+            { id: 'asc' },
+          ]
+          : undefined,
       include: { role: true },
     });
     return users.map(({ password, ...user }) => user);

@@ -199,6 +199,11 @@ export class StripeService {
           });
           console.log('[CAPTURED] [PLAN] ✅ Booking confirmed.');
 
+          await this.bookingsService.sendDoctorBookingStatusEmail(
+            notes.bookingId,
+            'confirmed',
+          );
+
           // Decrement the newly activated plan's bookingsPending
           await this.prisma.userPlan.update({
             where: { id: notes.userPlanId },
@@ -262,6 +267,11 @@ export class StripeService {
         },
       });
       console.log('[CAPTURED] [ONE_TIME] ✅ Booking confirmed.');
+
+      await this.bookingsService.sendDoctorBookingStatusEmail(
+        bookingId,
+        'confirmed',
+      );
 
       // Add consultation session
       console.log('[CAPTURED] [ONE_TIME] Creating consultation session...');

@@ -3,7 +3,25 @@ import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
 export class MailService {
-  constructor(private readonly mailerService: MailerService) {}
+  constructor(private readonly mailerService: MailerService) { }
+
+  private getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  private async sendTemplateMail(params: {
+    to: string;
+    subject: string;
+    template: string;
+    context: Record<string, unknown>;
+  }) {
+    return this.mailerService.sendMail({
+      to: params.to,
+      subject: params.subject,
+      template: params.template,
+      context: params.context,
+    });
+  }
 
   async sendWelcomeEmail(to: string, name: string) {
     await this.mailerService.sendMail({
@@ -14,36 +32,36 @@ export class MailService {
     });
   }
 
-async sendOtpEmail(to: string, name: string, otp: string, expiry = 10) {
-  try {
-    const result = await this.mailerService.sendMail({
-      to,
-      subject: 'Your OTP Code',
-      template: 'otp',
-      context: {
-        name,
-        otp,
-        expiry,
-        appName: 'Cuddlemind',
-      },
-    });
+  async sendOtpEmail(to: string, name: string, otp: string, expiry = 10) {
+    try {
+      const result = await this.mailerService.sendMail({
+        to,
+        subject: 'Your OTP Code',
+        template: 'otp',
+        context: {
+          name,
+          otp,
+          expiry,
+          appName: 'Cuddlemind',
+        },
+      });
 
-    console.log('Email sent:', result);
+      console.log('Email sent:', result);
 
-    return {
-      success: true,
-      messageId: result.messageId,
-    };
+      return {
+        success: true,
+        messageId: result.messageId,
+      };
 
-  } catch (error) {
-    console.error('Email sending failed:', error);
+    } catch (error) {
+      console.error('Email sending failed:', error);
 
-    return {
-      success: false,
-      error: error.message,
-    };
+      return {
+        success: false,
+        error: this.getErrorMessage(error),
+      };
+    }
   }
-}
 
   async sendBookingConfirmationEmail(
     to: string,
@@ -68,7 +86,88 @@ async sendOtpEmail(to: string, name: string, otp: string, expiry = 10) {
       return { success: true, result };
     } catch (error) {
       console.error('Booking confirmation failed:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: this.getErrorMessage(error) };
+    }
+  }
+
+  async sendDoctorBookingStatusEmail(params: {
+    to: string;
+    doctorName: string;
+    patientName: string;
+    scheduledAt: Date;
+    sessionType: string;
+    durationMinutes: number;
+    amount: number;
+    status: 'pending' | 'confirmed' | 'cancelled';
+  }) {
+    try {
+      const result = await this.sendTemplateMail({
+        to: params.to,
+        subject:
+          params.status === 'pending'
+            ? 'New booking assigned - Cuddlemind'
+            : params.status === 'confirmed'
+              ? 'Booking confirmed - Cuddlemind'
+              : 'Booking cancelled - Cuddlemind',
+        template: 'booking-status',
+        context: {
+          doctorName: params.doctorName,
+          patientName: params.patientName,
+          scheduledAt: params.scheduledAt.toLocaleString('en-US', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+          sessionType: params.sessionType,
+          durationMinutes: params.durationMinutes,
+          amount: Number(params.amount).toFixed(2),
+          status: params.status,
+          statusLabel:
+            params.status === 'pending'
+              ? 'assigned'
+              : params.status === 'confirmed'
+                ? 'confirmed'
+                : 'cancelled',
+          isPending: params.status === 'pending',
+          isConfirmed: params.status === 'confirmed',
+        },
+      });
+
+      return { success: true, result };
+    } catch (error) {
+      console.error('Doctor booking email failed:', error);
+      return { success: false, error: this.getErrorMessage(error) };
+    }
+  }
+
+  async sendBookingReminderEmail(params: {
+    to: string;
+    recipientName: string;
+    otherPartyName: string;
+    scheduledAt: Date;
+    role: 'doctor' | 'patient';
+    bookingId: string;
+  }) {
+    try {
+      const result = await this.sendTemplateMail({
+        to: params.to,
+        subject: 'Upcoming session reminder - Cuddlemind',
+        template: 'booking-reminder',
+        context: {
+          recipientName: params.recipientName,
+          otherPartyName: params.otherPartyName,
+          roleLabel: params.role === 'doctor' ? 'doctor' : 'patient',
+          scheduledAt: params.scheduledAt.toLocaleString('en-US', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+          bookingId: params.bookingId,
+        },
+      });
+
+      return { success: true, result };
+    } catch (error) {
+      console.error('Booking reminder email failed:', error);
+      return { success: false, error: this.getErrorMessage(error) };
     }
   }
 
@@ -93,7 +192,7 @@ async sendOtpEmail(to: string, name: string, otp: string, expiry = 10) {
       return { success: true };
     } catch (error) {
       console.error('Forgot password email failed:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: this.getErrorMessage(error) };
     }
   }
 }

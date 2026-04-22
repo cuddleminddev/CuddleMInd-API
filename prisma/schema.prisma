@@ -64,17 +64,18 @@ enum ChatMessageType {
 
 // Tables
 model User {
-  id             String     @id @default(uuid()) @map("id")
-  name           String     @map("name")
-  email          String     @unique @map("email")
-  phone          String?    @map("phone")
-  status         UserStatus @default(active) @map("status")
-  roleId         String     @map("role_id")
-  profilePicture String?    @map("profile_picture")
-  fcmToken       String?    @map("fcm_token") // Firebase Cloud Messaging device token
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
-  password       String?    @map("password")
+  id                String     @id @default(uuid()) @map("id")
+  name              String     @map("name")
+  email             String     @unique @map("email")
+  phone             String?    @map("phone")
+  status            UserStatus @default(active) @map("status")
+  bookingQueueOrder Int        @default(0) @map("booking_queue_order")
+  roleId            String     @map("role_id")
+  profilePicture    String?    @map("profile_picture")
+  fcmToken          String?    @map("fcm_token") // Firebase Cloud Messaging device token
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  password          String?    @map("password")
 
   role                   Role                   @relation(fields: [roleId], references: [id])
   userOtps               UserOtp[]
@@ -103,6 +104,17 @@ model DoctorProfile {
   doctor User @relation(fields: [doctorId], references: [id])
 
   @@map("doctor_profiles")
+}
+
+model BookingSetting {
+  id                     String   @id @default(uuid()) @map("id")
+  settingKey             String   @unique @default("default") @map("setting_key")
+  bookingDurationMinutes Int      @default(30) @map("booking_duration_minutes")
+  bookingCharge          Decimal  @default(100.0) @map("booking_charge")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("booking_settings")
 }
 
 model Role {

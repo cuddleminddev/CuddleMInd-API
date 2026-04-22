@@ -26,8 +26,9 @@ export class CreateBookingDto {
   scheduledAt: Date;
 
   @ApiProperty()
+  @IsOptional()
   @IsNumber()
-  durationMinutes: number;
+  durationMinutes?: number;
 
   @ApiProperty({ enum: PaymentType })
   @IsEnum(PaymentType)

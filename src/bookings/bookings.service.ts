@@ -23,11 +23,10 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { StripeService } from 'src/stripe/stripe.service';
 import { NotificationsService } from 'src/notifications/notifications.service';
+import { MailService } from 'src/mailer/mailer.service';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
-
-const SESSION_DURATION_MS = 30 * 60 * 1000;
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && aEnd > bStart;
@@ -40,7 +39,61 @@ export class BookingsService {
     @Inject(forwardRef(() => StripeService))
     private stripeService: StripeService,
     private notificationsService: NotificationsService,
+    private mailService: MailService,
   ) { }
+
+  private async getBookingSettings() {
+    const setting = await this.prisma.bookingSetting.upsert({
+      where: { settingKey: 'default' },
+      update: {},
+      create: { settingKey: 'default' },
+      select: {
+        bookingDurationMinutes: true,
+        bookingCharge: true,
+      },
+    });
+
+    return {
+      durationMinutes: setting.bookingDurationMinutes,
+      amount: Number(setting.bookingCharge),
+    };
+  }
+
+  async sendDoctorBookingStatusEmail(
+    bookingId: string,
+    status: 'pending' | 'confirmed' | 'cancelled',
+  ) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        doctor: { select: { name: true, email: true } },
+        patient: { select: { name: true, email: true } },
+      },
+    });
+
+    if (!booking?.doctor?.email || !booking?.patient?.name) {
+      return;
+    }
+
+    const bookingSettings = await this.getBookingSettings();
+
+    const result = await this.mailService.sendDoctorBookingStatusEmail({
+      to: booking.doctor.email,
+      doctorName: booking.doctor.name,
+      patientName: booking.patient.name,
+      scheduledAt: booking.scheduledAt,
+      sessionType: booking.sessionType,
+      durationMinutes: bookingSettings.durationMinutes,
+      amount: Number(booking.amount || bookingSettings.amount),
+      status,
+    });
+
+    if (!result?.success) {
+      console.warn(
+        `⚠️ [mail] Failed to send doctor booking ${status} email for booking ${bookingId}: ${result?.error ?? 'unknown error'}`,
+      );
+    }
+  }
 
   // Create booking with plan or one-time payment
   async create(dto: CreateBookingDto, clientId: string) {
@@ -73,17 +126,18 @@ export class BookingsService {
 
     console.log('📦 Active Plans:', activePlans);
 
+    const bookingSettings = await this.getBookingSettings();
+    const consultationCharge = bookingSettings.amount;
+    const durationMinutes = bookingSettings.durationMinutes;
+
     const assignedDoctorId =
-      doctorId || (await this.assignAvailableDoctor(new Date(scheduledAt)));
+      doctorId ||
+      (await this.assignAvailableDoctor(new Date(scheduledAt), durationMinutes));
 
     console.log('👨‍⚕️ Assigned Doctor ID:', assignedDoctorId);
 
-    const consultationCharge = await this.getConsultationCharge(
-      assignedDoctorId,
-      sessionType,
-    );
-
     console.log('💰 Consultation Charge:', consultationCharge);
+    console.log('⏱️ Booking Duration Minutes:', durationMinutes);
 
     let booking: Booking;
 
@@ -106,6 +160,8 @@ export class BookingsService {
       });
 
       console.log('📘 Booking created:', booking);
+
+      await this.sendDoctorBookingStatusEmail(booking.id, 'pending');
 
       const paymentOrder = await this.stripeService.createPaymentIntent(
         patientId,
@@ -289,7 +345,11 @@ export class BookingsService {
 
       console.log('📉 Decremented plan usage for:', selectedPlan.id);
 
-      await this.markDoctorUnavailable(assignedDoctorId, new Date(scheduledAt));
+      await this.markDoctorUnavailable(
+        assignedDoctorId,
+        new Date(scheduledAt),
+        durationMinutes,
+      );
 
       await this.prisma.consultationSession.create({
         data: {
@@ -297,10 +357,13 @@ export class BookingsService {
           date: new Date(scheduledAt),
           status: 'pending',
           sessionType,
+          durationInMinutes: durationMinutes,
         },
       });
 
       console.log('🗓️ Consultation session created for booking:', booking.id);
+
+      await this.sendDoctorBookingStatusEmail(booking.id, 'confirmed');
 
       // 🔔 Notify doctor about the new booking (fire-and-forget)
       this.notificationsService
@@ -392,9 +455,9 @@ export class BookingsService {
 
   // Update booking data
   async update(id: string, dto: UpdateBookingDto) {
-    await this.findOne(id);
+    const currentBooking = await this.findOne(id);
 
-    return this.prisma.booking.update({
+    const updatedBooking = await this.prisma.booking.update({
       where: { id },
       data: {
         ...(dto.doctorId && { doctorId: dto.doctorId }),
@@ -407,6 +470,22 @@ export class BookingsService {
         ...(dto.paymentType && { paymentType: dto.paymentType }),
       },
     });
+
+    if (
+      dto.status === BookingStatus.confirmed &&
+      currentBooking.status !== BookingStatus.confirmed
+    ) {
+      await this.sendDoctorBookingStatusEmail(id, 'confirmed');
+    }
+
+    if (
+      dto.status === BookingStatus.cancelled &&
+      currentBooking.status !== BookingStatus.cancelled
+    ) {
+      await this.sendDoctorBookingStatusEmail(id, 'cancelled');
+    }
+
+    return updatedBooking;
   }
 
   // Delete booking
@@ -415,34 +494,19 @@ export class BookingsService {
     return this.prisma.booking.delete({ where: { id } });
   }
 
-  // Get consultation charge for a doctor and session type
-  async getConsultationCharge(
-    doctorId: string,
-    type: SessionType,
-  ): Promise<number> {
-    const profile = await this.prisma.doctorProfile.findUnique({
-      where: { doctorId },
-    });
-
-    if (!profile) {
-      // default charges if profile missing
-      if (type === SessionType.audio) return 100;
-      if (type === SessionType.video) return 200;
-      return 0;
-    }
-
-    if (type === SessionType.audio)
-      return Number(profile.audioConsultationCharge);
-    if (type === SessionType.video)
-      return Number(profile.videoConsultationCharge);
-    return 0;
-  }
-
   // Find a doctor available at a given scheduledAt datetime
   // Assign available doctor
-  async assignAvailableDoctor(scheduledAt: Date): Promise<string> {
+  async assignAvailableDoctor(
+    scheduledAt: Date,
+    durationMinutes?: number,
+  ): Promise<string> {
+    const bookingSettings = durationMinutes
+      ? null
+      : await this.getBookingSettings();
+    const effectiveDurationMinutes = durationMinutes ?? bookingSettings!.durationMinutes;
+
     const scheduledStart = dayjs(scheduledAt).utc();
-    const scheduledEnd = scheduledStart.add(SESSION_DURATION_MS, 'millisecond');
+    const scheduledEnd = scheduledStart.add(effectiveDurationMinutes, 'minute');
     const dayOfWeek = scheduledStart.day();
 
     const scheduledTimeStart = new Date(
@@ -457,62 +521,96 @@ export class BookingsService {
     // the requested slot.  Using "gte scheduledStart - duration" means a
     // back-to-back booking (ends exactly at scheduledStart) is allowed.
     const overlapWindowStart = scheduledStart
-      .subtract(SESSION_DURATION_MS, 'millisecond')
+      .subtract(effectiveDurationMinutes, 'minute')
       .add(1, 'millisecond')
       .toDate();
 
     console.log('🕒 Finding doctor for:', scheduledStart.toISOString());
 
-    const doctors = await this.prisma.user.findMany({
-      where: {
-        role: { name: 'doctor' },
-        bookingsAsDoctor: {
-          none: {
-            // Exclude doctors who already have a pending OR confirmed booking
-            // that overlaps this slot.  Without this, the same doctor could be
-            // assigned to two different users for the same time slot (both
-            // pending), leading to a double-booking when payment completes.
-            scheduledAt: {
-              gte: overlapWindowStart,
-              lt: scheduledEnd.toDate(),
+    return this.prisma.$transaction(async (tx) => {
+      const availableDoctor = await tx.user.findFirst({
+        where: {
+          role: { name: 'doctor' },
+          status: 'active',
+          bookingsAsDoctor: {
+            none: {
+              // Exclude doctors who already have a pending OR confirmed booking
+              // that overlaps this slot. Without this, the same doctor could be
+              // assigned to two different users for the same time slot.
+              scheduledAt: {
+                gte: overlapWindowStart,
+                lt: scheduledEnd.toDate(),
+              },
+              status: { in: ['pending', 'confirmed'] },
             },
-            status: { in: ['pending', 'confirmed'] },
+          },
+          doctorUnavailabilities: {
+            none: {
+              startTime: { lte: scheduledStart.toDate() },
+              endTime: { gt: scheduledStart.toDate() },
+            },
+          },
+          timeslots: {
+            some: {
+              dayOfWeek,
+              isRecurring: true,
+              startTime: { lte: scheduledTimeStart },
+              endTime: { gte: scheduledTimeEnd },
+            },
           },
         },
-        doctorUnavailabilities: {
-          none: {
-            startTime: { lte: scheduledStart.toDate() },
-            endTime: { gt: scheduledStart.toDate() },
-          },
+        orderBy: [
+          { bookingQueueOrder: 'asc' },
+          { createdAt: 'asc' },
+          { id: 'asc' },
+        ],
+        select: {
+          id: true,
+          bookingQueueOrder: true,
         },
-        timeslots: {
-          some: {
-            dayOfWeek,
-            isRecurring: true,
-            startTime: { lte: scheduledTimeStart },
-            endTime: { gte: scheduledTimeEnd },
-          },
+      });
+
+      console.log('🔍 Available doctor selected for queue:', availableDoctor);
+
+      if (!availableDoctor) {
+        console.warn('⚠️ No available doctor for:', scheduledStart.toISOString());
+        throw new BadRequestException('No doctors available at this time slot');
+      }
+
+      const queueStats = await tx.user.aggregate({
+        where: {
+          role: { name: 'doctor' },
+          status: 'active',
         },
-      },
-      take: 1,
+        _max: {
+          bookingQueueOrder: true,
+        },
+      });
+
+      const nextQueueOrder = (queueStats._max.bookingQueueOrder ?? 0) + 1;
+
+      await tx.user.update({
+        where: { id: availableDoctor.id },
+        data: { bookingQueueOrder: nextQueueOrder },
+      });
+
+      return availableDoctor.id;
     });
-
-    console.log('🔍 Available doctors:', doctors);
-
-    const availableDoctor = doctors[0];
-
-    if (!availableDoctor) {
-      console.warn('⚠️ No available doctor for:', scheduledStart.toISOString());
-      throw new BadRequestException('No doctors available at this time slot');
-    }
-
-    return availableDoctor.id;
   }
 
   // Mark unavailability
-  async markDoctorUnavailable(doctorId: string, scheduledAt: Date) {
+  async markDoctorUnavailable(
+    doctorId: string,
+    scheduledAt: Date,
+    durationMinutes?: number,
+  ) {
+    const bookingSettings = durationMinutes
+      ? null
+      : await this.getBookingSettings();
+    const effectiveDurationMinutes = durationMinutes ?? bookingSettings!.durationMinutes;
+
     const slotStart = dayjs(scheduledAt).utc();
-    const slotEnd = slotStart.add(SESSION_DURATION_MS, 'millisecond');
+    const slotEnd = slotStart.add(effectiveDurationMinutes, 'minute');
 
     console.log('🛑 Marking unavailable:', {
       doctorId,
@@ -547,6 +645,8 @@ export class BookingsService {
   }
 
   async createConsultationSession(booking: Booking) {
+    const bookingSettings = await this.getBookingSettings();
+
     await this.prisma.consultationSession.upsert({
       where: { bookingId: booking.id },
       update: {
@@ -557,6 +657,7 @@ export class BookingsService {
         date: booking.scheduledAt,
         status: SessionStatusEnum.pending,
         sessionType: booking.sessionType,
+        durationInMinutes: bookingSettings.durationMinutes,
         zegocloudRoomId: `zego-${booking.id}`,
       },
     });

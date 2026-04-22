@@ -7,11 +7,21 @@ import dayjs from 'dayjs';
 export class BookingCleanupService {
   private readonly logger = new Logger(BookingCleanupService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
+
+  private async getBookingDurationMinutes() {
+    const setting = await this.prisma.bookingSetting.findUnique({
+      where: { settingKey: 'default' },
+      select: { bookingDurationMinutes: true },
+    });
+
+    return setting?.bookingDurationMinutes ?? 30;
+  }
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async cleanupExpiredPendingBookings() {
     const cutoff = dayjs().subtract(10, 'minute').toDate();
+    const bookingDurationMinutes = await this.getBookingDurationMinutes();
 
     const staleBookings = await this.prisma.booking.findMany({
       where: {
@@ -52,7 +62,9 @@ export class BookingCleanupService {
           where: {
             doctorId: booking.doctorId,
             startTime: booking.scheduledAt,
-            endTime: dayjs(booking.scheduledAt).add(30, 'minute').toDate(),
+            endTime: dayjs(booking.scheduledAt)
+              .add(bookingDurationMinutes, 'minute')
+              .toDate(),
             reason: 'Booked session',
           },
         });

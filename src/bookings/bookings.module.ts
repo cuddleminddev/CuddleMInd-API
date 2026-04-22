@@ -8,6 +8,7 @@ import { StripeModule } from 'src/stripe/stripe.module';
 import { PlansModule } from 'src/plans/plans.module';
 import { BookingCleanupService } from './booking-cleanup.service';
 import { NotificationsModule } from 'src/notifications/notifications.module';
+import { MailerModule } from 'src/mailer/mailer.module';
 
 @Module({
   imports: [
@@ -17,9 +18,10 @@ import { NotificationsModule } from 'src/notifications/notifications.module';
     forwardRef(() => StripeModule),
     PlansModule,
     NotificationsModule,
+    MailerModule,
   ],
   controllers: [BookingsController],
   providers: [BookingsService, BookingCleanupService],
   exports: [BookingsService],
 })
-export class BookingsModule {}
+export class BookingsModule { }
