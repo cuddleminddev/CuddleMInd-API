@@ -3,7 +3,6 @@ import {
     Get,
     Put,
     Body,
-    UseGuards,
     HttpCode,
     HttpStatus,
 } from '@nestjs/common';
@@ -13,17 +12,11 @@ import {
     ApiTags,
     ApiOperation,
     ApiResponse,
-    ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ResponseService } from 'src/response/response.service';
-import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { RolesGuard } from 'src/auth/guards/roles.guard';
-import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @ApiTags('Booking Settings')
-@ApiBearerAuth()
 @Controller('booking-settings')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class BookingSettingsController {
     constructor(
         private readonly bookingSettingsService: BookingSettingsService,
@@ -31,7 +24,6 @@ export class BookingSettingsController {
     ) { }
 
     @Get()
-    @Roles('admin')
     @ApiOperation({ summary: 'Get booking settings' })
     @ApiResponse({
         status: 200,
@@ -47,7 +39,6 @@ export class BookingSettingsController {
 
     @Put()
     @HttpCode(HttpStatus.OK)
-    @Roles('admin')
     @ApiOperation({ summary: 'Update booking settings' })
     @ApiResponse({
         status: 200,
