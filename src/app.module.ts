@@ -22,6 +22,7 @@ import { AffirmationsModule } from './affirmations/affirmations.module';
 import { MoodSupportModule } from './mood-support/mood-support.module';
 import { ContactUsModule } from './contact-us/contact-us.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { BookingSettingsModule } from './booking-settings/booking-settings.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     MoodSupportModule,
     ContactUsModule,
     NotificationsModule,
+    BookingSettingsModule,
   ],
 })
 export class AppModule { }
