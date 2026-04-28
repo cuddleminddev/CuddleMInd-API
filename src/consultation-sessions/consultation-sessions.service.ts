@@ -37,20 +37,24 @@ export class ConsultationSessionsService {
         },
       }));
 
-    // Notify doctor from /consultation-sessions/start too for instant bookings.
+    // Notify doctor from /consultation-sessions/start only if payment completed
     if (booking.type === BookingType.instant) {
-      this.chatGateway.notifyDoctorOfInstantSession(booking.doctorId, {
-        sessionId: booking.id,
-        patientId: booking.patientId,
-        patientName: booking.patient?.name ?? '',
-        doctorId: booking.doctorId,
-        bookingId: booking.id,
-        sessionType: booking.sessionType,
-        bookingType: booking.type,
-        paymentStatus: booking.isPaid ? 'paid' : 'pending',
-        zegocloudRoomId: session.zegocloudRoomId ?? `zego-${bookingId}`,
-        scheduledAt: booking.scheduledAt,
-      });
+      if (booking.isPaid) {
+        this.chatGateway.notifyDoctorOfInstantSession(booking.doctorId, {
+          sessionId: booking.id,
+          patientId: booking.patientId,
+          patientName: booking.patient?.name ?? '',
+          doctorId: booking.doctorId,
+          bookingId: booking.id,
+          sessionType: booking.sessionType,
+          bookingType: booking.type,
+          paymentStatus: 'paid',
+          zegocloudRoomId: session.zegocloudRoomId ?? `zego-${bookingId}`,
+          scheduledAt: booking.scheduledAt,
+        });
+      } else {
+        console.log(`⏳ startSession: instant booking ${bookingId} not paid — skipping doctor notify`);
+      }
     }
 
     return session;

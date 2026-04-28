@@ -552,6 +552,25 @@ export class ChatGateway
 
       if (!doctorId || !bookingId) return;
 
+      // Determine payment status from available payload/booking fields.
+      const bookingObj = payload?.booking ?? {};
+      const payloadPaymentStatus = (payload?.paymentStatus as string) ?? null;
+      const bookingIsPaid = bookingObj?.isPaid === true;
+      const bookingStatus = (bookingObj?.status as string) ?? null;
+
+      const isPaid =
+        payloadPaymentStatus === 'paid' ||
+        bookingIsPaid ||
+        (typeof bookingStatus === 'string' && ['confirmed', 'completed'].includes(bookingStatus));
+
+      if (!isPaid) {
+        // Do not notify doctor for instant sessions until payment is confirmed.
+        console.log(
+          `⏳ Skipping instant_session_started for booking ${bookingId} — payment not confirmed`,
+        );
+        return;
+      }
+
       this.notifyDoctorOfInstantSession(doctorId, {
         sessionId: bookingId,
         patientId,
@@ -560,7 +579,7 @@ export class ChatGateway
         bookingId,
         sessionType: payload?.booking?.sessionType ?? payload?.sessionType ?? SessionType.video,
         bookingType: BookingType.instant,
-        paymentStatus: payload?.paymentStatus ?? 'pending',
+        paymentStatus: 'paid',
         zegocloudRoomId: `zego-${bookingId}`,
         scheduledAt: payload?.booking?.scheduledAt ?? new Date(),
       });
