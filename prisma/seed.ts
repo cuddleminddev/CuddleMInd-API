@@ -118,7 +118,7 @@ async function main() {
   console.log('Seeding affirmations...');
   // Check if affirmations already exist
   const existingAffirmationsCount = await prisma.affirmation.count();
-  
+
   if (existingAffirmationsCount === 0) {
     await prisma.affirmation.createMany({
       data: affirmationsData
