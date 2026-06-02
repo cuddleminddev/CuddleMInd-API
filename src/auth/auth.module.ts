@@ -22,14 +22,19 @@ import { MailerModule } from 'src/mailer/mailer.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: async (configService: ConfigService) => {
+        const expiresInRaw = (configService.get<string>('JWT_EXPIRATION') ?? '86400').trim();
+        const expiresIn: string | number = /^\d+$/.test(expiresInRaw)
+          ? Number(expiresInRaw)
+          : expiresInRaw;
+
+        return {
         secret: configService.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: Number(
-            configService.get<string>('JWT_EXPIRATION', '86400'),
-          ),
+          expiresIn,
         },
-      }),
+        };
+      },
 
     }),
   ],
