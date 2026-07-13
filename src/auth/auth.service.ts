@@ -140,7 +140,7 @@ export class AuthService {
 
     // If DEFAULT_OTP is set in .env and the user submits it, bypass real OTP check
     const defaultOtp = this.configService.get<string>('DEFAULT_OTP');
-    const isDefaultOtp = defaultOtp && otp === defaultOtp;
+    const isDefaultOtp = defaultOtp && String(otp).trim() === defaultOtp;
 
     if (!isDefaultOtp) {
       const latestOtp = await this.prisma.userOtp.findFirst({
@@ -155,7 +155,7 @@ export class AuthService {
         throw new UnauthorizedException('Invalid or expired OTP');
       }
 
-      const isValid = await bcrypt.compare(otp, latestOtp.otpSecret);
+      const isValid = await bcrypt.compare(String(otp).trim(), latestOtp.otpSecret);
       if (!isValid) {
         throw new UnauthorizedException('Invalid or expired OTP');
       }
@@ -181,5 +181,40 @@ export class AuthService {
     return this.prisma.user.findUnique({
       where: { id: userId },
     });
+  }
+
+  // Verify OTP only without token generation or activation
+  async verifyOtpOnly(email: string, otp: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const defaultOtp = this.configService.get<string>('DEFAULT_OTP');
+    const isDefaultOtp = defaultOtp && String(otp).trim() === defaultOtp;
+
+    if (!isDefaultOtp) {
+      const latestOtp = await this.prisma.userOtp.findFirst({
+        where: {
+          userId: user.id,
+          expiresAt: { gte: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!latestOtp) {
+        throw new UnauthorizedException('Invalid or expired OTP');
+      }
+
+      const isValid = await bcrypt.compare(String(otp).trim(), latestOtp.otpSecret);
+      if (!isValid) {
+        throw new UnauthorizedException('Invalid or expired OTP');
+      }
+
+      // Delete OTP after successful use
+      await this.prisma.userOtp.delete({ where: { id: latestOtp.id } });
+    }
+
+    return user;
   }
 }

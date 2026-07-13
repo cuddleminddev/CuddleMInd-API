@@ -82,19 +82,8 @@ export class AuthController {
       throw new BadRequestException('requested user is not active');
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiry = new Date();
-    expiry.setMinutes(expiry.getMinutes() + 10); // 10 min expiry
-
-    await this.prisma.userOtp.create({
-      data: {
-        userId: user.id,
-        otpSecret: otp,
-        expiresAt: expiry,
-      },
-    });
-
-    await this.mailService.sendOtpEmail(email, user.name || 'User', otp, 10);
+    const result = await this.authService.generateOtp(email);
+    await this.mailService.sendOtpEmail(email, user.name || 'User', result.otp, 5);
 
     return this.responseService.successResponse('OTP sent to your email');
   }
@@ -106,34 +95,13 @@ export class AuthController {
     @Body('otp') otp: string,
     @Body('newPassword') newPassword: string,
   ) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    const validOtp = await this.prisma.userOtp.findFirst({
-      where: {
-        userId: user.id,
-        otpSecret: otp,
-        expiresAt: { gte: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (!validOtp) {
-      throw new UnauthorizedException('Invalid or expired OTP');
-    }
+    const user = await this.authService.verifyOtpOnly(email, otp);
 
     const hashed = await bcrypt.hash(newPassword, 10);
 
     await this.prisma.user.update({
       where: { id: user.id },
       data: { password: hashed },
-    });
-
-    await this.prisma.userOtp.deleteMany({
-      where: { userId: user.id },
     });
 
     return this.responseService.successResponse('Password reset successful');

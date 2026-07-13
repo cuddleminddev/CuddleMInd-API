@@ -99,6 +99,9 @@ export class TimeSlotsService {
       { start: Date; end: Date; freeDoctors: Set<string> }
     >();
 
+    // To implement the 1-hour buffer, we first collect all free 30-min intervals per doctor.
+    const doctorFreeIntervals = new Map<string, Date[]>();
+
     for (const slot of timeslots) {
       const slotDoctorId = slot.doctorId;
 
@@ -135,8 +138,6 @@ export class TimeSlotsService {
         const intervalEnd = addMinutes(intervalStart, slotDuration);
         current = intervalEnd;
 
-        const key = intervalStart.toISOString();
-
         // Check whether THIS doctor is blocked at this interval.
         const isBookingOverlap = bookings.some((b) => {
           if (b.doctorId !== slotDoctorId) return false;
@@ -155,18 +156,54 @@ export class TimeSlotsService {
           );
         });
 
-        // If this doctor is free, register them against this interval key.
         if (!isBookingOverlap && !isUnavailabilityOverlap) {
-          if (!intervalDoctorCountMap.has(key)) {
-            intervalDoctorCountMap.set(key, {
-              start: intervalStart,
-              end: intervalEnd,
-              freeDoctors: new Set(),
-            });
+          if (!doctorFreeIntervals.has(slotDoctorId)) {
+            doctorFreeIntervals.set(slotDoctorId, []);
           }
-          intervalDoctorCountMap.get(key)!.freeDoctors.add(slotDoctorId);
+          doctorFreeIntervals.get(slotDoctorId)!.push(intervalStart);
         }
       }
+    }
+
+    // Process contiguous blocks per doctor
+    for (const [doctorId, intervals] of doctorFreeIntervals.entries()) {
+      // Sort intervals by time
+      intervals.sort((a, b) => a.getTime() - b.getTime());
+      
+      let currentBlock: Date[] = [];
+      
+      const processBlock = () => {
+        // A block must have at least 2 consecutive 30-min intervals (i.e. >= 60 mins buffer)
+        if (currentBlock.length >= 2) {
+          for (const start of currentBlock) {
+            const key = start.toISOString();
+            if (!intervalDoctorCountMap.has(key)) {
+              intervalDoctorCountMap.set(key, {
+                start,
+                end: addMinutes(start, slotDuration),
+                freeDoctors: new Set(),
+              });
+            }
+            intervalDoctorCountMap.get(key)!.freeDoctors.add(doctorId);
+          }
+        }
+      };
+
+      for (let i = 0; i < intervals.length; i++) {
+        if (currentBlock.length === 0) {
+          currentBlock.push(intervals[i]);
+        } else {
+          const prev = currentBlock[currentBlock.length - 1];
+          // Check if contiguous (exactly slotDuration minutes apart)
+          if (intervals[i].getTime() - prev.getTime() === slotDuration * 60_000) {
+            currentBlock.push(intervals[i]);
+          } else {
+            processBlock();
+            currentBlock = [intervals[i]];
+          }
+        }
+      }
+      processBlock();
     }
 
     // Return ISO UTC strings for frontend.

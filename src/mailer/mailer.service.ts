@@ -114,6 +114,7 @@ export class MailService {
           doctorName: params.doctorName,
           patientName: params.patientName,
           scheduledAt: params.scheduledAt.toLocaleString('en-US', {
+            timeZone: 'Asia/Kolkata',
             dateStyle: 'medium',
             timeStyle: 'short',
           }),
@@ -157,6 +158,7 @@ export class MailService {
           otherPartyName: params.otherPartyName,
           roleLabel: params.role === 'doctor' ? 'doctor' : 'patient',
           scheduledAt: params.scheduledAt.toLocaleString('en-US', {
+            timeZone: 'Asia/Kolkata',
             dateStyle: 'medium',
             timeStyle: 'short',
           }),
