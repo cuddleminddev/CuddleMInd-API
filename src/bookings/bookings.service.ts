@@ -161,8 +161,6 @@ export class BookingsService {
 
       console.log('📘 Booking created:', booking);
 
-      await this.sendDoctorBookingStatusEmail(booking.id, 'pending');
-
       const paymentOrder = await this.stripeService.createPaymentIntent(
         patientId,
         Number(consultationCharge),
@@ -397,7 +395,12 @@ export class BookingsService {
 
     if (patientId) where.patientId = patientId;
     if (doctorId) where.doctorId = doctorId;
-    if (status) where.status = status;
+    
+    if (status) {
+      where.status = status;
+    } else {
+      where.status = { not: 'pending' };
+    }
 
     if (fromDate || toDate) {
       const scheduledAt: any = {};
