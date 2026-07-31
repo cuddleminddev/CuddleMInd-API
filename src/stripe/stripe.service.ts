@@ -204,7 +204,13 @@ export class StripeService {
             'confirmed',
           );
 
-          // Decrement the newly activated plan's bookingsPending
+          // Notify the patient by email now that payment is confirmed.
+          // This is the ONLY place the patient confirmation email fires —
+          // never at booking creation time.
+          await this.bookingsService.sendPatientBookingConfirmationEmail(
+            notes.bookingId,
+          );
+
           await this.prisma.userPlan.update({
             where: { id: notes.userPlanId },
             data: { bookingsPending: { decrement: 1 } },
@@ -272,6 +278,11 @@ export class StripeService {
         bookingId,
         'confirmed',
       );
+
+      // Notify the patient by email now that payment is confirmed.
+      // This is the ONLY place the patient confirmation email fires —
+      // never at booking creation time.
+      await this.bookingsService.sendPatientBookingConfirmationEmail(bookingId);
 
       // Add consultation session
       console.log('[CAPTURED] [ONE_TIME] Creating consultation session...');

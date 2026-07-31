@@ -140,6 +140,46 @@ export class MailService {
     }
   }
 
+  /**
+   * Sends a booking confirmation email to the PATIENT.
+   * Only called from the Razorpay webhook after payment is captured,
+   * so the patient is never notified for unpaid/pending bookings.
+   */
+  async sendPatientBookingConfirmationEmail(params: {
+    to: string;
+    patientName: string;
+    doctorName: string;
+    scheduledAt: Date;
+    sessionType: string;
+    durationMinutes: number;
+    amount: number;
+  }) {
+    try {
+      const result = await this.sendTemplateMail({
+        to: params.to,
+        subject: 'Booking confirmed – Cuddlemind',
+        template: 'patient-booking-confirmation',
+        context: {
+          patientName: params.patientName,
+          doctorName: params.doctorName,
+          scheduledAt: params.scheduledAt.toLocaleString('en-US', {
+            timeZone: 'Asia/Kolkata',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+          sessionType: params.sessionType,
+          durationMinutes: params.durationMinutes,
+          amount: Number(params.amount).toFixed(2),
+        },
+      });
+
+      return { success: true, result };
+    } catch (error) {
+      console.error('Patient booking confirmation email failed:', error);
+      return { success: false, error: this.getErrorMessage(error) };
+    }
+  }
+
   async sendBookingReminderEmail(params: {
     to: string;
     recipientName: string;

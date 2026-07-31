@@ -63,7 +63,9 @@ export class TimeSlotsService {
         gte: utcDayStart,
         lte: utcDayEnd,
       },
-      status: { in: ['pending', 'confirmed'] },
+      // Only confirmed bookings block a slot — pending-payment bookings do NOT
+      // block display slots until payment is captured via webhook.
+      status: { in: ['confirmed'] },
     };
 
     if (doctorId) {
@@ -81,26 +83,27 @@ export class TimeSlotsService {
       unavailabilityWhere.doctorId = doctorId;
     }
 
-    const [timeslots, bookings, unavailabilities] = await Promise.all([
+    const [timeslots, bookings, unavailabilities, bookingSetting] = await Promise.all([
       this.prisma.timeslot.findMany({
         where: { ...timeslotWhere, doctor: { status: 'active' } },
       }),
       this.prisma.booking.findMany({ where: bookingWhere }),
       this.prisma.doctorUnavailability.findMany({ where: unavailabilityWhere }),
+      this.prisma.bookingSetting.findFirst({ where: { settingKey: 'default' } }),
     ]);
 
-    const slotDuration = 30; // minutes
+    // Duration of an actual booked session (used to test if an existing booking
+    // overlaps a candidate display slot). Falls back to 30 min if settings are missing.
+    const bookingSessionMinutes: number =
+      bookingSetting?.bookingDurationMinutes ?? 30;
 
-    // Track per interval: the list of free doctors for that time.
-    // The slot appears in the output as long as freeDoctors.length > 0.
-    // A booking / unavailability for Doctor A does NOT block Doctor B.
+    const slotDuration = 30; // display granularity is always 30 minutes
+
+    // Map of ISO-start → { start, end, freeDoctors }
     const intervalDoctorCountMap = new Map<
       string,
       { start: Date; end: Date; freeDoctors: Set<string> }
     >();
-
-    // To implement the 1-hour buffer, we first collect all free 30-min intervals per doctor.
-    const doctorFreeIntervals = new Map<string, Date[]>();
 
     for (const slot of timeslots) {
       const slotDoctorId = slot.doctorId;
@@ -124,28 +127,28 @@ export class TimeSlotsService {
         0, 0,
       ));
 
-      // If endTime is before or equal to startTime, it means the slot crosses
-      // midnight in UTC. Add one day to endTime to handle this correctly.
+      // If endTime is before or equal to startTime, the slot crosses midnight.
+      // Add one day to endTime to handle this correctly.
       if (endTime <= startTime) {
         endTime = addDays(endTime, 1);
       }
 
       let current = new Date(startTime);
 
-      // Include a slot as long as a full 30-min interval fits (<=, not <).
+      // Show a slot as long as a full 30-min interval fits within the schedule.
       while (!isAfter(addMinutes(current, slotDuration), endTime)) {
         const intervalStart = new Date(current);
         const intervalEnd = addMinutes(intervalStart, slotDuration);
         current = intervalEnd;
 
-        // Check whether THIS doctor is blocked at this interval.
+        // Check whether THIS doctor has a confirmed booking overlapping this slot.
+        // Use the actual booking session duration (bookingSessionMinutes) so that
+        // a 60-min session at 11:30 blocks 11:30 onward but NOT 11:00.
         const isBookingOverlap = bookings.some((b) => {
           if (b.doctorId !== slotDoctorId) return false;
-          const bTime = b.scheduledAt.getTime();
-          return (
-            bTime < intervalEnd.getTime() &&
-            bTime + slotDuration * 60_000 > intervalStart.getTime()
-          );
+          const bookedStart = b.scheduledAt.getTime();
+          const bookedEnd = bookedStart + bookingSessionMinutes * 60_000;
+          return bookedStart < intervalEnd.getTime() && bookedEnd > intervalStart.getTime();
         });
 
         const isUnavailabilityOverlap = unavailabilities.some((u) => {
@@ -156,54 +159,20 @@ export class TimeSlotsService {
           );
         });
 
+        // Each free 30-min slot is shown independently.
+        // No contiguous-block minimum — a single free half-hour slot is valid.
         if (!isBookingOverlap && !isUnavailabilityOverlap) {
-          if (!doctorFreeIntervals.has(slotDoctorId)) {
-            doctorFreeIntervals.set(slotDoctorId, []);
+          const key = intervalStart.toISOString();
+          if (!intervalDoctorCountMap.has(key)) {
+            intervalDoctorCountMap.set(key, {
+              start: intervalStart,
+              end: intervalEnd,
+              freeDoctors: new Set(),
+            });
           }
-          doctorFreeIntervals.get(slotDoctorId)!.push(intervalStart);
+          intervalDoctorCountMap.get(key)!.freeDoctors.add(slotDoctorId);
         }
       }
-    }
-
-    // Process contiguous blocks per doctor
-    for (const [doctorId, intervals] of doctorFreeIntervals.entries()) {
-      // Sort intervals by time
-      intervals.sort((a, b) => a.getTime() - b.getTime());
-      
-      let currentBlock: Date[] = [];
-      
-      const processBlock = () => {
-        // A block must have at least 2 consecutive 30-min intervals (i.e. >= 60 mins buffer)
-        if (currentBlock.length >= 2) {
-          for (const start of currentBlock) {
-            const key = start.toISOString();
-            if (!intervalDoctorCountMap.has(key)) {
-              intervalDoctorCountMap.set(key, {
-                start,
-                end: addMinutes(start, slotDuration),
-                freeDoctors: new Set(),
-              });
-            }
-            intervalDoctorCountMap.get(key)!.freeDoctors.add(doctorId);
-          }
-        }
-      };
-
-      for (let i = 0; i < intervals.length; i++) {
-        if (currentBlock.length === 0) {
-          currentBlock.push(intervals[i]);
-        } else {
-          const prev = currentBlock[currentBlock.length - 1];
-          // Check if contiguous (exactly slotDuration minutes apart)
-          if (intervals[i].getTime() - prev.getTime() === slotDuration * 60_000) {
-            currentBlock.push(intervals[i]);
-          } else {
-            processBlock();
-            currentBlock = [intervals[i]];
-          }
-        }
-      }
-      processBlock();
     }
 
     // Return ISO UTC strings for frontend.

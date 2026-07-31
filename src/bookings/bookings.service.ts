@@ -95,6 +95,45 @@ export class BookingsService {
     }
   }
 
+  /**
+   * Sends a booking confirmation email to the PATIENT after payment is captured.
+   * Called from the Razorpay webhook handler so the email only fires once payment succeeds.
+   */
+  async sendPatientBookingConfirmationEmail(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        doctor: { select: { name: true } },
+        patient: { select: { name: true, email: true } },
+      },
+    });
+
+    if (!booking?.patient?.email || !booking?.patient?.name) {
+      console.warn(
+        `⚠️ [mail] Cannot send patient confirmation — missing patient data for booking ${bookingId}`,
+      );
+      return;
+    }
+
+    const bookingSettings = await this.getBookingSettings();
+
+    const result = await this.mailService.sendPatientBookingConfirmationEmail({
+      to: booking.patient.email,
+      patientName: booking.patient.name,
+      doctorName: booking.doctor?.name ?? 'your doctor',
+      scheduledAt: booking.scheduledAt,
+      sessionType: booking.sessionType,
+      durationMinutes: bookingSettings.durationMinutes,
+      amount: Number(booking.amount || bookingSettings.amount),
+    });
+
+    if (!result?.success) {
+      console.warn(
+        `⚠️ [mail] Failed to send patient booking confirmation email for booking ${bookingId}: ${result?.error ?? 'unknown error'}`,
+      );
+    }
+  }
+
   // Create booking with plan or one-time payment
   async create(dto: CreateBookingDto, clientId: string) {
     const { type, scheduledAt, doctorId, paymentType, sessionType } = dto;
@@ -399,7 +438,9 @@ export class BookingsService {
     if (status) {
       where.status = status;
     } else {
-      where.status = { not: 'pending' };
+      // Exclude pending-payment and failed bookings by default so only
+      // confirmed and cancelled bookings are surfaced to users/doctors.
+      where.status = { notIn: ['pending', 'failed'] };
     }
 
     if (fromDate || toDate) {
