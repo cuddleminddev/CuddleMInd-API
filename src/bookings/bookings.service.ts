@@ -205,6 +205,8 @@ export class BookingsService {
         Number(consultationCharge),
         PaymentType.one_time,
         {
+          userId: patientId,   // webhook reads notes.userId
+          type: 'one_time',    // webhook reads notes.type — required to route correctly
           patientId,
           doctorId: assignedDoctorId,
           bookingId: booking.id,

@@ -99,13 +99,15 @@ export class StripeService {
     console.log('[WEBHOOK] Full event payload  :', JSON.stringify(event, null, 2));
 
     switch (eventType) {
-      case 'payment.captured': {
-        const payment = event.payload?.payment?.entity;
+      case 'payment.captured':
+      case 'payment.order.paid': {
+        const payment =
+          event.payload?.payment?.entity ?? event.payload?.order?.entity;
         if (payment) {
           console.log('[WEBHOOK] Routing to handlePaymentCaptured, payment id:', payment.id);
           await this.handlePaymentCaptured(payment);
         } else {
-          console.warn('[WEBHOOK] ⚠️  payment.captured event has no payment entity.');
+          console.warn(`[WEBHOOK] ⚠️  ${eventType} event has no payment entity.`);
         }
         break;
       }
