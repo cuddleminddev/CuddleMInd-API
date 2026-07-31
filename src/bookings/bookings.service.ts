@@ -555,17 +555,14 @@ export class BookingsService {
     const scheduledEnd = scheduledStart.add(effectiveDurationMinutes, 'minute');
     const dayOfWeek = scheduledStart.day();
 
-    const scheduledTimeStart = new Date(
-      Date.UTC(1970, 0, 1, scheduledStart.hour(), scheduledStart.minute()),
-    );
-    // If the session crosses midnight (e.g. 23:00 + 60 min = 00:00 next day),
-    // the epoch-based end time wraps below the start time. Add one day to fix this.
-    let scheduledTimeEnd = new Date(
-      Date.UTC(1970, 0, 1, scheduledEnd.hour(), scheduledEnd.minute()),
-    );
-    if (scheduledTimeEnd <= scheduledTimeStart) {
-      scheduledTimeEnd = new Date(scheduledTimeEnd.getTime() + 24 * 60 * 60 * 1000);
-    }
+    // Convert scheduled start/end to minutes-from-midnight (UTC) for time coverage check.
+    // We do NOT use the 1970-epoch trick — stored timeslot times may be on 1969-12-31
+    // (when IST→UTC conversion crosses the day boundary) making epoch-date comparisons
+    // unreliable. Instead we compare UTC hours/minutes directly in application code.
+    const scheduledStartMins = scheduledStart.hour() * 60 + scheduledStart.minute();
+    const scheduledEndMins   = scheduledEnd.hour()   * 60 + scheduledEnd.minute();
+    // Does the session itself cross midnight? (e.g. 23:00 + 60 min = 00:00 next day)
+    const sessionCrossesMidnight = scheduledEnd.date() !== scheduledStart.date();
 
     // Start of the overlap window: any booking that started within
     // (scheduledStart - sessionDuration, scheduledEnd) would overlap with
@@ -577,17 +574,18 @@ export class BookingsService {
       .toDate();
 
     console.log('🕒 Finding doctor for:', scheduledStart.toISOString());
+    console.log('🕒 scheduledStartMins:', scheduledStartMins, 'scheduledEndMins:', scheduledEndMins, 'crossesMidnight:', sessionCrossesMidnight);
 
     return this.prisma.$transaction(async (tx) => {
-      const availableDoctor = await tx.user.findFirst({
+      // Fetch all active doctors that have a timeslot on this UTC day-of-week,
+      // are not blocked by a pending/confirmed booking, and are not marked unavailable.
+      // Time-range coverage is verified in application code below.
+      const candidates = await tx.user.findMany({
         where: {
           role: { name: 'doctor' },
           status: 'active',
           bookingsAsDoctor: {
             none: {
-              // Exclude doctors who already have a pending OR confirmed booking
-              // that overlaps this slot. Without this, the same doctor could be
-              // assigned to two different users for the same time slot.
               scheduledAt: {
                 gte: overlapWindowStart,
                 lt: scheduledEnd.toDate(),
@@ -602,12 +600,7 @@ export class BookingsService {
             },
           },
           timeslots: {
-            some: {
-              dayOfWeek,
-              isRecurring: true,
-              startTime: { lte: scheduledTimeStart },
-              endTime: { gte: scheduledTimeEnd },
-            },
+            some: { dayOfWeek, isRecurring: true },
           },
         },
         orderBy: [
@@ -618,10 +611,45 @@ export class BookingsService {
         select: {
           id: true,
           bookingQueueOrder: true,
+          timeslots: {
+            where: { dayOfWeek, isRecurring: true },
+            select: { startTime: true, endTime: true },
+          },
         },
       });
 
-      console.log('🔍 Available doctor selected for queue:', availableDoctor);
+      // Filter candidates whose timeslot actually covers the scheduled session.
+      // Uses UTC hours from stored times (correct regardless of the epoch date stored).
+      const availableDoctor = candidates.find((doctor) =>
+        doctor.timeslots.some((slot) => {
+          const slotStartMins = slot.startTime.getUTCHours() * 60 + slot.startTime.getUTCMinutes();
+          const slotEndMins   = slot.endTime.getUTCHours()   * 60 + slot.endTime.getUTCMinutes();
+          // A slot crosses midnight when its end (in UTC minutes) is <= its start.
+          const slotCrossesMidnight = slotEndMins <= slotStartMins;
+
+          if (!sessionCrossesMidnight && !slotCrossesMidnight) {
+            // Simple same-day case: slot must fully contain the session.
+            return slotStartMins <= scheduledStartMins && slotEndMins >= scheduledEndMins;
+          }
+
+          if (sessionCrossesMidnight && slotCrossesMidnight) {
+            // Both cross midnight: compare independently on each side.
+            return slotStartMins <= scheduledStartMins && slotEndMins >= scheduledEndMins;
+          }
+
+          if (sessionCrossesMidnight && !slotCrossesMidnight) {
+            // Session crosses midnight but slot doesn't — slot cannot cover it.
+            return false;
+          }
+
+          // Slot crosses midnight, session doesn't — session is fully within one half.
+          // "Before midnight" half: session starts after slot start.
+          // "After midnight" half: session ends before slot end.
+          return scheduledStartMins >= slotStartMins || scheduledEndMins <= slotEndMins;
+        }),
+      );
+
+      console.log('🔍 Available doctor selected for queue:', availableDoctor ?? null);
 
       if (!availableDoctor) {
         console.warn('⚠️ No available doctor for:', scheduledStart.toISOString());
