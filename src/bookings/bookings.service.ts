@@ -558,9 +558,14 @@ export class BookingsService {
     const scheduledTimeStart = new Date(
       Date.UTC(1970, 0, 1, scheduledStart.hour(), scheduledStart.minute()),
     );
-    const scheduledTimeEnd = new Date(
+    // If the session crosses midnight (e.g. 23:00 + 60 min = 00:00 next day),
+    // the epoch-based end time wraps below the start time. Add one day to fix this.
+    let scheduledTimeEnd = new Date(
       Date.UTC(1970, 0, 1, scheduledEnd.hour(), scheduledEnd.minute()),
     );
+    if (scheduledTimeEnd <= scheduledTimeStart) {
+      scheduledTimeEnd = new Date(scheduledTimeEnd.getTime() + 24 * 60 * 60 * 1000);
+    }
 
     // Start of the overlap window: any booking that started within
     // (scheduledStart - sessionDuration, scheduledEnd) would overlap with
